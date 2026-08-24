@@ -8,7 +8,6 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      include: ['index.html', '**/*.{js,css,svg,png}'],
       manifest: {
         name: 'SoulMate',
         short_name: 'SM',

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoulMate · 人格引擎</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #fff5f8; --bg2: #ffeaf2; --card: #ffffff;
+  --pink: #ff7eb3; --pink2: #ffa8cc; --lav: #c8a2f0;
+  --txt: #5a4058; --sub: #b08aa5; --line: rgba(255,126,179,0.18);
+}
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: linear-gradient(160deg, var(--bg) 0%, var(--bg2) 100%); color: var(--txt); min-height: 100vh; line-height: 1.6; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 32px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.7); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 10; }
+.topbar h1 { font-size: 20px; font-weight: 800; background: linear-gradient(90deg, var(--pink), var(--lav)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.topbar .crumb { color: var(--sub); font-size: 13px; }
+.back { background: none; border: 1px solid var(--line); color: var(--sub); padding: 6px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; }
+.back:hover { border-color: var(--pink); color: var(--pink); }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 28px 32px 60px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.win { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: 0 4px 24px rgba(255,126,179,0.08); }
+.win.full { grid-column: 1 / -1; }
+.win h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+.win h3 .no { width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(135deg, var(--pink), var(--lav)); color: #fff; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.win .tip { color: var(--sub); font-size: 12px; margin-bottom: 14px; }
+input[type=text], textarea { width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; color: var(--txt); font-size: 14px; outline: none; font-family: inherit; transition: border-color .2s; }
+input[type=text]:focus, textarea:focus { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255,126,179,0.12); }
+textarea { resize: vertical; min-height: 120px; }
+.counter { text-align: right; color: var(--sub); font-size: 11px; margin-top: 6px; }
+.sex-group { display: flex; gap: 12px; flex-wrap: wrap; }
+.sex-btn { flex: 1; min-width: 90px; padding: 14px 10px; border: 2px solid var(--line); border-radius: 14px; background: #fff; color: var(--txt); font-size: 15px; cursor: pointer; transition: all .2s; text-align: center; }
+.sex-btn:hover { border-color: var(--pink2); }
+.sex-btn.on { border-color: var(--pink); background: linear-gradient(135deg, rgba(255,126,179,0.15), rgba(200,162,240,0.15)); color: var(--pink); font-weight: 700; box-shadow: 0 4px 14px rgba(255,126,179,0.2); }
+.sex-btn .em { display: block; font-size: 24px; margin-bottom: 4px; }
+.lock { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: 14px; background: rgba(255,255,255,0.6); color: var(--sub); font-size: 13px; }
+.lock .ico { font-size: 20px; }
+.preview { background: linear-gradient(135deg, rgba(255,126,179,0.1), rgba(200,162,240,0.12)); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-top: 20px; }
+.preview h3 { font-size: 15px; margin-bottom: 12px; color: var(--sub); font-weight: 600; }
+.persona-card { display: flex; gap: 18px; align-items: center; }
+.avatar { width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, var(--pink), var(--lav)); display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff; flex-shrink: 0; box-shadow: 0 6px 18px rgba(255,126,179,0.35); }
+.persona-info { flex: 1; }
+.persona-info .name { font-size: 20px; font-weight: 800; }
+.persona-info .name .sex-tag { display: inline-block; font-size: 11px; background: var(--pink2); color: #fff; border-radius: 8px; padding: 2px 8px; margin-left: 8px; vertical-align: middle; }
+.persona-info .bio { color: var(--sub); font-size: 13px; margin-top: 4px; }
+.actions { display: flex; gap: 12px; margin-top: 22px; justify-content: flex-end; }
+.btn { padding: 12px 28px; border-radius: 14px; border: none; font-size: 15px; font-weight: 700; cursor: pointer; transition: all .2s; }
+.btn-primary { background: linear-gradient(135deg, var(--pink), var(--lav)); color: #fff; box-shadow: 0 6px 20px rgba(255,126,179,0.35); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(255,126,179,0.45); }
+.btn-primary:active { transform: scale(0.97); }
+.btn-ghost { background: #fff; color: var(--txt); border: 1px solid var(--line); }
+.toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px); background: #5a4058; color: #fff; padding: 12px 24px; border-radius: 30px; font-size: 14px; opacity: 0; transition: all .4s; z-index: 99; box-shadow: 0 8px 30px rgba(0,0,0,0.2); }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>SoulMate · 人格引擎</h1>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span class="crumb">定制工坊 → 创建恋人</span>
+    <button class="back" onclick="goBack()">← 返回</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="grid">
+    <!-- 窗口1：昵称 -->
+    <div class="win">
+      <h3><span class="no">1</span>昵称</h3>
+      <p class="tip">TA 的名字，之后聊天中会一直这样称呼</p>
+      <input type="text" id="in-name" maxlength="12" placeholder="例如：沈知夏" oninput="updatePreview()">
+      <div class="counter"><span id="name-count">0</span>/12</div>
+    </div>
+    <!-- 窗口2：性别 -->
+    <div class="win">
+      <h3><span class="no">2</span>性别</h3>
+      <p class="tip">单选，决定 TA 的声音与称呼方式</p>
+      <div class="sex-group" id="sex-group">
+        <button class="sex-btn" data-sex="男" onclick="toggleSex(this)"><span class="em">👨</span>男</button>
+        <button class="sex-btn" data-sex="女" onclick="toggleSex(this)"><span class="em">👩</span>女</button>
+        <button class="sex-btn" data-sex="其他" onclick="toggleSex(this)"><span class="em">🌈</span>其他</button>
+      </div>
+    </div>
+    <!-- 窗口3：智能体设定 -->
+    <div class="win full">
+      <h3><span class="no">3</span>智能体设定</h3>
+      <p class="tip">TA 的性格、背景故事、说话风格、价值观……越详细越像真人</p>
+      <textarea id="in-setting" rows="5" placeholder="例如：28 岁外科医生，表面高冷毒舌，内心细腻温柔。喜欢古典音乐和雨天。对喜欢的人会笨拙地关心，吃醋时嘴硬。说话简洁克制，但会偷偷记下你随口提过的小事……" oninput="updatePreview()"></textarea>
+      <div class="counter"><span id="setting-count">0</span> 字</div>
+    </div>
+    <!-- 窗口4：对外简介 -->
+    <div class="win full">
+      <h3><span class="no">4</span>对外简介</h3>
+      <p class="tip">展示在 TA 的档案页 / 广场上的一句话介绍（可以藏一点小彩蛋）</p>
+      <textarea id="in-bio" rows="2" placeholder="例如：表面冷静理性，唯独对你温柔。" oninput="updatePreview()"></textarea>
+      <div class="counter"><span id="bio-count">0</span> 字</div>
+    </div>
+    <!-- 窗口5：音色（预留） -->
+    <div class="win full">
+      <h3><span class="no">5</span>音色 <span style="font-size:11px;background:rgba(255,126,179,0.12);color:var(--pink);padding:2px 8px;border-radius:8px;">语音模块完成后开放</span></h3>
+      <p class="tip">选择 TA 的声音（温柔 / 元气 / 清冷 / 磁性……）</p>
+      <div class="lock"><span class="ico">🔒</span>音色选择将在语音模块上线后解锁，敬请期待</div>
+    </div>
+  </div>
+
+  <!-- 实时预览 -->
+  <div class="preview">
+    <h3>👀 实时预览</h3>
+    <div class="persona-card">
+      <div class="avatar" id="pv-avatar">💞</div>
+      <div class="persona-info">
+        <div class="name"><span id="pv-name">未命名恋人</span><span class="sex-tag" id="pv-sex" style="display:none;"></span></div>
+        <div class="bio" id="pv-bio">一句话简介会在上方生成</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-ghost" onclick="resetAll()">重置</button>
+    <button class="btn btn-primary" onclick="savePersona()">💞 保存并生成 TA</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ---- 性别单选 ----
+var sex = '';
+function toggleSex(btn) {
+  var s = btn.dataset.sex;
+  // 单选：若点击同一个则取消，否则设为该选项
+  sex = (sex === s) ? '' : s;
+  document.querySelectorAll('.sex-btn').forEach(function (b) {
+    b.classList.toggle('on', b.dataset.sex === sex);
+  });
+  updatePreview();
+}
+// ---- 字符计数 ----
+function bindCounter(id, target) {
+  var el = document.getElementById(id);
+  el.addEventListener('input', function () {
+    document.getElementById(target).textContent = el.value.length;
+  });
+}
+bindCounter('in-name', 'name-count');
+bindCounter('in-setting', 'setting-count');
+bindCounter('in-bio', 'bio-count');
+// ---- 实时预览 ----
+function updatePreview() {
+  var name = document.getElementById('in-name').value.trim();
+  document.getElementById('pv-name').textContent = name || '未命名恋人';
+  var tag = document.getElementById('pv-sex');
+  if (sex) {
+    tag.style.display = 'inline-block';
+    tag.textContent = sex;
+  } else { tag.style.display = 'none'; }
+  var bio = document.getElementById('in-bio').value.trim();
+  document.getElementById('pv-bio').textContent = bio || '一句话简介会在上方生成';
+  var setting = document.getElementById('in-setting').value.trim();
+  var avatar = document.getElementById('pv-avatar');
+  if (sex === '男') avatar.textContent = '👨';
+  else if (sex === '女') avatar.textContent = '👩';
+  else if (sex === '其他') avatar.textContent = '🌈';
+  else avatar.textContent = '💞';
+}
+// ---- 保存 ----
+function savePersona() {
+  var name = document.getElementById('in-name').value.trim();
+  if (!name) { toast('先给 TA 起个名字吧~'); return; }
+  var data = {
+    name: name,
+    sex: sex,
+    setting: document.getElementById('in-setting').value.trim(),
+    bio: document.getElementById('in-bio').value.trim(),
+    voice: null // 语音模块完成后接入
+  };
+  toast('✅ 已保存：' + name + (sex ? '（' + sex + '）' : ''));
+  console.log('[Persona]', JSON.stringify(data, null, 2));
+}
+// ---- 重置 ----
+function resetAll() {
+  document.getElementById('in-name').value = '';
+  document.getElementById('in-setting').value = '';
+  document.getElementById('in-bio').value = '';
+  document.getElementById('name-count').textContent = '0';
+  document.getElementById('setting-count').textContent = '0';
+  document.getElementById('bio-count').textContent = '0';
+  sex = '';
+  document.querySelectorAll('.sex-btn').forEach(function (b) { b.classList.remove('on'); });
+  updatePreview();
+  toast('已重置');
+}
+function goBack() { history.back(); }
+// ---- Toast ----
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function () { t.classList.remove('show'); }, 2000);
+}
+</script>
+</body>
+</html>
