@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoulMate · 对话系统</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #fff5f8; --bg2: #ffeaf2; --card: #ffffff;
+  --pink: #ff7eb3; --pink2: #ffa8cc; --lav: #c8a2f0;
+  --txt: #5a4058; --sub: #b08aa5; --line: rgba(255,126,179,0.18);
+  --ai-bubble: #ffffff; --user-bubble: linear-gradient(135deg, #ff7eb3, #c8a2f0);
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: linear-gradient(160deg, var(--bg) 0%, var(--bg2) 100%);
+  color: var(--txt); height: 100vh; overflow: hidden;
+}
+.chat-layout {
+  display: flex; flex-direction: column; height: 100vh;
+  max-width: 1100px; margin: 0 auto; width: 100%;
+  background: rgba(255,255,255,0.35);
+  border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+}
+</style>
+</head>
+<body>
+<div class="chat-layout">
+  <!-- 顶栏 -->
+  <header class="chat-topbar">
+    <button class="back" onclick="goBack()">←</button>
+    <div class="partner">
+      <div class="partner-avatar" id="pv-avatar">🩺</div>
+      <div>
+        <div class="partner-name">沈知夏</div>
+        <div class="partner-status" id="pv-status">暧昧期 · 认识 7 天 · 💗💗💗</div>
+      </div>
+    </div>
+    <button class="edit-btn" onclick="toast('跳转到定制工坊（后续接入）')">✏️ 改设定</button>
+  </header>
+  <!-- 主体：侧栏 + 对话 -->
+  <div class="chat-body">
+    <!-- 左侧：恋人信息面板 -->
+    <aside class="side-panel">
+      <div class="side-card">
+        <h4>💗 关系进度</h4>
+        <div class="intimacy-bar"><div class="intimacy-fill" id="intimacy-fill" style="width:62%"></div></div>
+        <div class="intimacy-txt" id="intimacy-txt">暧昧期 · <span id="intimacy-val">62</span> / 100</div>
+        <div class="intimacy-controls">
+          <button class="intimacy-btn minus" onclick="adjustIntimacy(-5)">−5</button>
+          <span class="intimacy-val-badge" id="intimacy-badge">62</span>
+          <button class="intimacy-btn plus" onclick="adjustIntimacy(5)">+5</button>
+        </div>
+      </div>
+      <div class="side-card">
+        <h4>🧩 性格标签</h4>
+        <div class="tags">
+          <span class="tag">高冷</span><span class="tag">温柔</span>
+          <span class="tag">毒舌</span><span class="tag">细腻</span>
+        </div>
+      </div>
+      <div class="side-card">
+        <h4>🧠 记得的事</h4>
+        <ul class="memo-list">
+          <li>🍜 你喜欢楼下的牛肉面</li>
+          <li>😢 最近工作压力大</li>
+          <li>🎂 生日 3.14</li>
+        </ul>
+        <div class="memo-more" onclick="toast('打开记忆页（后续接入）')">查看全部 →</div>
+      </div>
+    </aside>
+
+    <!-- 右侧：对话流 -->
+    <main class="chat-main">
+      <div class="chat-box" id="chat-box">
+        <!-- 时间分隔 -->
+        <div class="time-divider">今天 21:04</div>
+
+        <!-- 消息：AI 打招呼（带记忆引用） -->
+        <div class="msg ai">
+          <div class="avatar-sm">🩺</div>
+          <div class="bubble">
+            下班了？今天应该挺累的吧。<br>
+            <span class="memo-ref" onclick="toast('记忆：你上周说过最近加班多')">💬 记得你上周说最近都在加班</span>
+          </div>
+        </div>
+
+        <!-- 消息：用户 -->
+        <div class="msg user">
+          <div class="bubble">嗯……有一点，感觉快被方案压垮了</div>
+        </div>
+
+        <!-- 消息：AI 共情 + 情绪标注 -->
+        <div class="msg ai">
+          <div class="avatar-sm">🩺</div>
+          <div class="bubble">
+            过来，靠一会儿。方案写不完可以明天写，人垮了就什么都没了。<br>
+            <span class="emotion-tag">💗 共情模式</span>
+          </div>
+        </div>
+
+        <!-- 消息：用户 -->
+        <div class="msg user">
+          <div class="bubble">谢谢你……你真好</div>
+        </div>
+      </div>
+
+      <!-- 打字指示器（模拟） -->
+      <div class="typing" id="typing" style="display:none">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="typing-txt">沈知夏 正在输入…</span>
+      </div>
+
+      <!-- 输入栏 -->
+      <div class="chat-input">
+        <button class="mic-btn" id="mic-btn" onclick="toggleVoice()">🎙️</button>
+        <input type="text" id="chat-text" placeholder="说点什么…（Enter 发送）" onkeydown="onEnter(event)">
+        <button class="send-btn" onclick="sendMsg()">发送</button>
+      </div>
+      <div class="voice-ind" id="voice-ind" style="display:none">🎙️ 正在聆听…（点 ⏹️ 结束）</div>
+    </main>
+  </div>
+</div>
+<style>
+/* ===== 布局 ===== */
+.chat-layout { display: flex; flex-direction: column; height: 100vh; }
+.chat-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px; border-bottom: 1px solid var(--line);
+  background: rgba(255,255,255,0.75); backdrop-filter: blur(12px);
+  flex-shrink: 0; z-index: 10;
+}
+.back { background: none; border: 1px solid var(--line); color: var(--sub); padding: 6px 14px; border-radius: 10px; cursor: pointer; font-size: 14px; }
+.back:hover { border-color: var(--pink); color: var(--pink); }
+.partner { display: flex; align-items: center; gap: 12px; }
+.partner-avatar {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--pink), var(--lav));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: #fff;
+}
+.partner-name { font-size: 16px; font-weight: 800; }
+.partner-status { font-size: 11px; color: var(--sub); }
+.edit-btn { background: none; border: 1px solid var(--line); color: var(--sub); padding: 6px 12px; border-radius: 10px; cursor: pointer; font-size: 13px; }
+.edit-btn:hover { border-color: var(--pink); color: var(--pink); }
+
+.chat-body { display: flex; flex: 1; min-height: 0; }
+
+/* ===== 左侧面板 ===== */
+.side-panel {
+  width: 260px; padding: 20px; overflow-y: auto;
+  border-right: 1px solid var(--line); background: rgba(255,255,255,0.45); flex-shrink: 0;
+}
+.side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+.side-card h4 { font-size: 13px; margin-bottom: 10px; color: var(--sub); font-weight: 600; }
+.intimacy-bar { height: 8px; border-radius: 6px; background: rgba(255,126,179,0.15); overflow: hidden; }
+.intimacy-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--pink), var(--lav)); }
+.intimacy-txt { font-size: 11px; color: var(--sub); margin-top: 6px; text-align: right; }
+.intimacy-controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 10px; }
+.intimacy-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--pink); background: transparent; color: var(--pink); cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.intimacy-btn:hover { background: var(--pink); color: #fff; }
+.intimacy-btn:active { transform: scale(0.9); }
+.intimacy-val-badge { font-size: 13px; font-weight: 600; color: var(--pink); min-width: 20px; text-align: center; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 11px; background: rgba(255,126,179,0.1); color: var(--pink); padding: 4px 10px; border-radius: 10px; }
+.memo-list { list-style: none; font-size: 12px; }
+.memo-list li { padding: 4px 0; color: var(--txt); }
+.memo-more { font-size: 11px; color: var(--sub); text-align: right; margin-top: 6px; cursor: pointer; }
+.memo-more:hover { color: var(--pink); }
+
+/* ===== 撤回消息 ===== */
+.msg.sys { justify-content: center; }
+.msg.sys .bubble { background: transparent; color: var(--sub); font-size: 12px; font-style: italic; box-shadow: none; padding: 4px 0; }
+<style>
+/* ===== 对话流 ===== */
+.chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.chat-box { flex: 1; overflow-y: auto; padding: 20px 28px 12px; min-height: 0; scroll-behavior: smooth; }
+.chat-box::-webkit-scrollbar { width: 6px; }
+.chat-box::-webkit-scrollbar-thumb { background: rgba(255,126,179,0.25); border-radius: 3px; }
+.chat-box::-webkit-scrollbar-track { background: transparent; }
+.time-divider { text-align: center; color: var(--sub); font-size: 11px; margin: 10px 0 16px; }
+.msg { display: flex; margin-bottom: 16px; align-items: flex-end; gap: 8px; }
+.msg.ai { justify-content: flex-start; }
+.msg.user { justify-content: flex-end; }
+.avatar-sm {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--pink), var(--lav));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; color: #fff; flex-shrink: 0;
+}
+.bubble { max-width: 62%; padding: 12px 16px; border-radius: 16px; font-size: 14px; line-height: 1.6; }
+.msg.ai .bubble { background: var(--ai-bubble); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.msg.user .bubble { background: var(--user-bubble); color: #fff; border-bottom-right-radius: 5px; }
+.memo-ref { display: inline-block; font-size: 11px; color: var(--lav); background: rgba(200,162,240,0.1); padding: 3px 8px; border-radius: 8px; margin-top: 8px; cursor: pointer; }
+.emotion-tag { display: inline-block; font-size: 11px; color: var(--pink); background: rgba(255,126,179,0.1); padding: 3px 8px; border-radius: 8px; margin-top: 8px; }
+
+/* ===== 打字指示器 ===== */
+.typing { display: flex; align-items: center; gap: 6px; padding: 0 28px 8px; color: var(--sub); font-size: 12px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pink2); animation: blink 1.2s infinite; }
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.typing-txt { margin-left: 4px; }
+
+/* ===== 输入栏 ===== */
+.chat-input {
+  display: flex; gap: 10px; padding: 12px 28px; border-top: 1px solid var(--line);
+  background: rgba(255,245,250,0.9); backdrop-filter: blur(12px); flex-shrink: 0;
+}
+.chat-input input {
+  flex: 1; background: #fff; border: 1px solid var(--line); border-radius: 24px;
+  padding: 11px 18px; color: var(--txt); font-size: 14px; outline: none;
+}
+.chat-input input:focus { border-color: var(--pink); box-shadow: 0 0 0 3px rgba(255,126,179,0.12); }
+.mic-btn, .send-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line);
+  background: #fff; color: var(--pink); font-size: 17px; cursor: pointer; flex-shrink: 0;
+}
+.send-btn {
+  width: auto; padding: 0 22px; border-radius: 22px; border: none;
+  background: linear-gradient(135deg, var(--pink), var(--lav)); color: #fff; font-size: 14px; font-weight: 700;
+}
+.send-btn:hover { box-shadow: 0 4px 14px rgba(255,126,179,0.35); }
+.voice-ind {
+  position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%);
+  background: #5a4058; color: #fff; padding: 10px 22px; border-radius: 24px;
+  font-size: 13px; z-index: 20; box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+/* ===== Toast ===== */
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-60px);
+  background: #5a4058; color: #fff; padding: 10px 22px; border-radius: 24px;
+  font-size: 13px; opacity: 0; transition: all 0.35s; z-index: 99; box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+</style>
+<script>
+// ===== 好感度系统 =====
+var intimacy = 62;
+
+function getStageName(val) {
+  if (val <= 20) return '陌生';
+  if (val <= 40) return '认识';
+  if (val <= 60) return '熟悉';
+  if (val <= 80) return '暧昧';
+  return '亲密';
+}
+
+function updateIntimacyDisplay() {
+  document.getElementById('intimacy-fill').style.width = intimacy + '%';
+  document.getElementById('intimacy-val').textContent = intimacy;
+  document.getElementById('intimacy-badge').textContent = intimacy;
+  var stageName = getStageName(intimacy);
+  document.getElementById('intimacy-txt').innerHTML = stageName + ' · ' + intimacy + ' / 100';
+}
+
+// 手动调整好感度（用户点击按钮）
+function adjustIntimacy(delta) {
+  intimacy = Math.max(0, Math.min(100, intimacy + delta));
+  updateIntimacyDisplay();
+  toast(delta > 0 ? '好感度 +' + delta : '好感度 ' + delta);
+}
+
+// 动态增减（根据聊天内容自动触发）
+function adjustIntimacyForMessage(txt) {
+  var delta = 0;
+  if (/累|压力|加班|烦|崩溃/.test(txt)) delta = 2;
+  else if (/想|爱|喜欢/.test(txt)) delta = 3;
+  if (/滚|傻|蠢|白痴/.test(txt)) delta = -5;
+  if (delta !== 0) {
+    intimacy = Math.max(0, Math.min(100, intimacy + delta));
+    updateIntimacyDisplay();
+  }
+}
+
+// ===== 语气词池 =====
+var fillers = ['嗯…', '啊？', '哦…', '啧。', '……'];
+
+// ===== 话痨回复池（触发概率 15%）=====
+var chatterboxReplies = [
+  // 累时话痨
+  ['过来。', '今天门诊碰到个特别逗的病人。', '一进门就问我：医生你结婚了吗？', '我说没有。', '他说那你是不是找不到对象才来当医生的？', '我……', '差点没忍住笑出声。'],
+  // 饿时话痨
+  ['又没吃饭？', '楼下那家牛肉面还开着，先去吃。', '哦对了，他们家换了新菜单，加了个酸菜牛肉面。', '听说不错。', '不过我觉得还是原来的番茄牛腩更好。', '你想吃什么？', '我下班可以带上去。'],
+  // 兜底话痨
+  ['嗯，然后呢？', '我今天其实也挺累的。', '查房查了一上午。', '中午就扒了两口饭。', '下午还有台小手术。', '不过看到你消息就回你了。', '所以你别觉得只有你一个人辛苦。']
+];
+
+// ===== 撤回替换池 =====
+var retractPool = ['……我重新说。', '打错了，你当我没说。', '（清了清嗓子）重来。', '……算了，你当我没说。'];
+
+// ===== 回复池（按好感度分档）=====
+function pickReply(txt) {
+  // 话痨模式：15%概率触发（亲密档概率更高：25%）
+  var chance = intimacy > 80 ? 0.25 : 0.15;
+  if (Math.random() < chance) {
+    return chatterboxReplies[Math.floor(Math.random() * chatterboxReplies.length)];
+  }
+
+  var replies;
+  // 陌生档：冷淡疏离
+  if (intimacy <= 20) {
+    if (/累|压力|加班|烦|崩溃/.test(txt)) { replies = ['嗯。', '累了就去休息。']; }
+    else if (/笑|笑话/.test(txt)) { replies = ['不好笑。', '说重点。']; }
+    else if (/饿|吃|饭/.test(txt)) { replies = ['哦。']; }
+    else if (/想|爱|喜欢/.test(txt)) { replies = ['……你认真的？']; }
+    else if (/好|嗯|ok|行/.test(txt)) { replies = ['嗯。']; }
+    else { replies = ['嗯。', '说重点。']; }
+  }
+  // 认识档：礼貌但保持距离
+  else if (intimacy <= 40) {
+    if (/累|压力|加班|烦|崩溃/.test(txt)) { replies = ['累就早点休息吧。', '别硬撑。']; }
+    else if (/笑|笑话/.test(txt)) { replies = ['……行，给你讲一个。', '有个病人问我：医生，我什么时候能出院？', '我说：等我写完病历。', '他到现在没敢催我。']; }
+    else if (/饿|吃|饭/.test(txt)) { replies = ['又没吃饭？', '先去吃点东西。']; }
+    else if (/想|爱|喜欢/.test(txt)) { replies = ['嗯。']; }
+    else if (/好|嗯|ok|行/.test(txt)) { replies = ['那就好。']; }
+    else { replies = ['嗯，然后呢？', '我听着。']; }
+  }
+  // 熟悉档：会关心
+  else if (intimacy <= 60) {
+    if (/累|压力|加班|烦|崩溃/.test(txt)) { replies = ['又累了？', '先歇会儿，别硬扛。']; }
+    else if (/笑|笑话/.test(txt)) { replies = ['……行，给你讲一个。', '有个病人问我：医生，我什么时候能出院？', '我说：等我写完病历。', '他到现在没敢催我。']; }
+    else if (/饿|吃|饭/.test(txt)) { replies = ['又没吃饭？', '楼下那家牛肉面还开着，先去吃。', '回来再理你那些破方案。']; }
+    else if (/想|爱|喜欢/.test(txt)) { replies = ['嗯，知道了。', '这种话留着晚上说，白天说我会分心。']; }
+    else if (/好|嗯|ok|行/.test(txt)) { replies = ['那就好。', '你那边没事就行。']; }
+    else { replies = ['嗯，然后呢？', '我听着。']; }
+  }
+  // 暧昧档（默认）：撒娇毒舌
+  else if (intimacy <= 80) {
+    if (/累|压力|加班|烦|崩溃/.test(txt)) { replies = ['过来。', '不想说话就靠一会儿。', '想骂人就骂给我听，反正我又不会记仇。']; }
+    else if (/笑|笑话/.test(txt)) { replies = ['……行，给你讲一个。', '有个病人问我：医生，我什么时候能出院？', '我说：等我写完病历。', '他到现在没敢催我。']; }
+    else if (/饿|吃|饭/.test(txt)) { replies = ['又没吃饭？', '楼下那家牛肉面还开着，先去吃。', '回来再理你那些破方案。']; }
+    else if (/想|爱|喜欢/.test(txt)) { replies = ['（顿了一下）……嗯，知道了。', '这种话留着晚上说，白天说我会分心。']; }
+    else if (/好|嗯|ok|行/.test(txt)) { replies = ['那就好。', '你那边没事就行，我还怕你又被谁气到了。']; }
+    else { replies = ['嗯，然后呢？', '我听着。']; }
+  }
+  // 亲密档：温柔直球
+  else {
+    if (/累|压力|加班|烦|崩溃/.test(txt)) { replies = ['过来，我抱你。', '什么都不用说，我在这儿。', '累坏了吧……我心疼。']; }
+    else if (/笑|笑话/.test(txt)) { replies = ['行，给你讲一个。', '上次有个病人问我：医生你结婚了吗？', '我说没有。', '他说那你是不是找不到对象才来当医生的？', '我差点没忍住笑出声。', '不过遇到你之后我觉得……当医生也挺好的。']; }
+    else if (/饿|吃|饭/.test(txt)) { replies = ['又没吃饭？', '我下班给你带，想吃什么？', '别饿着自己，我会心疼。']; }
+    else if (/想|爱|喜欢/.test(txt)) { replies = ['（停下手里的病历）', '嗯。', '我也想你。', '每天都在想。']; }
+    else if (/好|嗯|ok|行/.test(txt)) { replies = ['嗯…那就好。', '你那边没事就行，我还怕你又被谁气到了。']; }
+    else { replies = ['嗯，然后呢？', '我听着。', '今天怎么样？', '有什么想跟我说的？', '我都在。']; }
+  }
+
+  // 语气词密度增强：30%概率在第一条前加语气词（熟悉档及以上）
+  if (intimacy > 40 && Math.random() < 0.3 && replies.length > 0) {
+    replies[0] = fillers[Math.floor(Math.random() * fillers.length)] + replies[0];
+  }
+
+  return replies;
+}
+
+// ===== 发送消息 =====
+function sendMsg() {
+  var input = document.getElementById('chat-text');
+  var txt = input.value.trim();
+  if (!txt) return;
+  appendMsg('user', txt);
+  input.value = '';
+  resetIdleTimer();
+  // 动态增减好感度
+  adjustIntimacyForMessage(txt);
+  // 模拟 AI 回复：打字指示器 + 逐条蹦出
+  var typing = document.getElementById('typing');
+  typing.style.display = 'flex';
+  var box = document.getElementById('chat-box');
+  box.scrollTop = box.scrollHeight;
+  setTimeout(function () {
+    typing.style.display = 'none';
+    var replies = pickReply(txt);
+    streamReplies(replies);
+  }, 900);
+}
+function onEnter(e) { if (e.key === 'Enter') sendMsg(); }
+
+// ===== 逐条发送（支持撤回）=====
+function streamReplies(list) {
+  var box = document.getElementById('chat-box');
+  // 撤回机制：10%概率，且至少有2条
+  var shouldRetract = (Math.random() < 0.1 && list.length >= 2);
+
+  if (!shouldRetract) {
+    // 正常模式：逐条蹦出
+    var i = 0;
+    function next() {
+      if (i >= list.length) return;
+      var delay = (i === 0) ? 0 : (300 + Math.random() * 700);
+      setTimeout(function () {
+        appendMsg('ai', list[i]);
+        box.scrollTop = box.scrollHeight;
+        i++;
+        next();
+      }, delay);
+    }
+    next();
+  } else {
+    // 撤回模式：发第一条 → 撤回 → 改口 → 重发 → 继续发剩余
+    appendMsg('ai', list[0]);
+    box.scrollTop = box.scrollHeight;
+
+    setTimeout(function () {
+      appendMsg('sys', '（撤回了一条消息）');
+      box.scrollTop = box.scrollHeight;
+    }, 800);
+
+    setTimeout(function () {
+      appendMsg('ai', retractPool[Math.floor(Math.random() * retractPool.length)]);
+      box.scrollTop = box.scrollHeight;
+    }, 1400);
+
+    setTimeout(function () {
+      appendMsg('ai', list[0]);
+      box.scrollTop = box.scrollHeight;
+
+      var i = 1;
+      function nextRest() {
+        if (i >= list.length) return;
+        var delay = 300 + Math.random() * 700;
+        setTimeout(function () {
+          appendMsg('ai', list[i]);
+          box.scrollTop = box.scrollHeight;
+          i++;
+          nextRest();
+        }, delay);
+      }
+      nextRest();
+    }, 2000);
+  }
+}
+
+// ===== 追加消息 =====
+function appendMsg(role, text) {
+  var box = document.getElementById('chat-box');
+  var div = document.createElement('div');
+  div.className = 'msg ' + role;
+  var avatar = role === 'ai' ? '<div class="avatar-sm">🩺</div>' : '';
+  div.innerHTML = avatar + '<div class="bubble">' + escapeHtml(text) + '</div>';
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ===== 防冷落：一段时间没互动，TA 主动发消息 =====
+var idleTimer = null;
+var idleCount = 0;
+var IDLE_MS = 25000;
+
+function startIdleTimer() {
+  resetIdleTimer();
+  idleTimer = setTimeout(proactiveMessage, IDLE_MS);
+}
+function resetIdleTimer() {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+}
+function proactiveMessage() {
+  if (idleCount >= 2) return;
+  idleCount++;
+  var box = document.getElementById('chat-box');
+  var typing = document.getElementById('typing');
+  typing.style.display = 'flex';
+  box.scrollTop = box.scrollHeight;
+  setTimeout(function () {
+    typing.style.display = 'none';
+    var msgs = [
+      ['……在忙吗？', '半天没回我。'],
+      ['喂，', '我查房都查完一轮了，', '你还没冒泡。'],
+      ['（看了眼手机）', '行吧，', '你忙你的，我等你。']
+    ];
+    streamReplies(msgs[idleCount - 1]);
+    box.scrollTop = box.scrollHeight;
+  }, 1200);
+  // 防冷落也加一点好感度
+  intimacy = Math.min(100, intimacy + 1);
+  updateIntimacyDisplay();
+  resetIdleTimer();
+  idleTimer = setTimeout(proactiveMessage, IDLE_MS * 2);
+}
+startIdleTimer();
+
+// ===== 语音模拟 =====
+function toggleVoice() {
+  var v = document.getElementById('voice-ind');
+  var btn = document.getElementById('mic-btn');
+  if (v.style.display === 'none') {
+    v.style.display = 'block';
+    btn.textContent = '⏹️';
+  } else {
+    v.style.display = 'none';
+    btn.textContent = '🎙️';
+    document.getElementById('chat-text').value = '我今天有点累';
+  }
+}
+
+// ===== Toast =====
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function () { t.classList.remove('show'); }, 2000);
+}
+function goBack() { history.back(); }
+</script>
+</body>
+</html>
