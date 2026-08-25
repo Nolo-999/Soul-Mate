@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../types/chat';
-import { pickReplies, PROACTIVE_MESSAGES, DEFAULT_PARTNER, RETRACT_POOL } from '../constants/chat';
+import {
+  pickReplies, PROACTIVE_MESSAGES, DEFAULT_PARTNER, RETRACT_POOL,
+  REPORT_INTERVAL, REPORT_MESSAGES, TOOL_CALLS,
+} from '../constants/chat';
 import './ChatPage.css';
 
 /** 好感度阶段名 */
@@ -12,7 +15,7 @@ function getStageName(val: number): string {
   return '亲密';
 }
 
-/** 对话系统页面（拟人化：多段回复 + 好感度分档 + 防冷落 + 撤回） */
+/** 对话系统页面（拟人化：多段回复 + 好感度分档 + 防冷落 + 撤回 + 报备 + 工具玩法） */
 export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState('');
@@ -21,6 +24,7 @@ export default function ChatPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [intimacy, setIntimacy] = useState(DEFAULT_PARTNER.intimacy);
   const idleTimer = useRef<number | null>(null);
+  const reportTimer = useRef<number | null>(null);
   const idleCount = useRef(0);
   const boxRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
@@ -46,7 +50,6 @@ export default function ChatPage() {
     const shouldRetract = Math.random() < 0.1 && list.length >= 2;
 
     if (!shouldRetract) {
-      // 正常模式
       let i = 0;
       function next() {
         if (i >= list.length) return;
@@ -60,52 +63,41 @@ export default function ChatPage() {
       }
       next();
     } else {
-      // 撤回模式：发第一条 → 撤回 → 改口 → 重发 → 继续发剩余
       appendMsg('ai', list[0]);
       if (box) box.scrollTop = box.scrollHeight;
-
-      setTimeout(() => {
-        appendMsg('sys', '（撤回了一条消息）');
-        if (box) box.scrollTop = box.scrollHeight;
-      }, 800);
-
-      setTimeout(() => {
-        appendMsg('ai', RETRACT_POOL[Math.floor(Math.random() * RETRACT_POOL.length)]);
-        if (box) box.scrollTop = box.scrollHeight;
-      }, 1400);
-
+      setTimeout(() => { appendMsg('sys', '（撤回了一条消息）'); if (box) box.scrollTop = box.scrollHeight; }, 800);
+      setTimeout(() => { appendMsg('ai', RETRACT_POOL[Math.floor(Math.random() * RETRACT_POOL.length)]); if (box) box.scrollTop = box.scrollHeight; }, 1400);
       setTimeout(() => {
         appendMsg('ai', list[0]);
         if (box) box.scrollTop = box.scrollHeight;
-
         let i = 1;
         function nextRest() {
           if (i >= list.length) return;
-          const delay = 300 + Math.random() * 700;
-          setTimeout(() => {
-            appendMsg('ai', list[i]);
-            if (box) box.scrollTop = box.scrollHeight;
-            i++;
-            nextRest();
-          }, delay);
+          setTimeout(() => { appendMsg('ai', list[i]); if (box) box.scrollTop = box.scrollHeight; i++; nextRest(); }, 300 + Math.random() * 700);
         }
         nextRest();
       }, 2000);
     }
   }
 
-  /** 动态增减好感度（根据聊天内容） */
+  /** 触发工具调用 */
+  function triggerToolCall() {
+    const tool = TOOL_CALLS[Math.floor(Math.random() * TOOL_CALLS.length)];
+    appendMsg('sys', `${tool.emoji} 沈知夏${tool.name}了`);
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    setTimeout(() => streamReplies(tool.messages), 800);
+  }
+
+  /** 动态增减好感度 */
   function adjustIntimacyForMessage(txt: string) {
     let delta = 0;
     if (/累|压力|加班|烦|崩溃/.test(txt)) delta = 2;
     else if (/想|爱|喜欢/.test(txt)) delta = 3;
     if (/滚|傻|蠢|白痴/.test(txt)) delta = -5;
-    if (delta !== 0) {
-      setIntimacy((prev) => Math.max(0, Math.min(100, prev + delta)));
-    }
+    if (delta !== 0) setIntimacy((prev) => Math.max(0, Math.min(100, prev + delta)));
   }
 
-  /** 手动调整好感度（用户点击按钮） */
+  /** 手动调整好感度 */
   function adjustIntimacy(delta: number) {
     setIntimacy((prev) => {
       const next = Math.max(0, Math.min(100, prev + delta));
@@ -122,19 +114,22 @@ export default function ChatPage() {
     setInput('');
     resetIdleTimer();
     adjustIntimacyForMessage(txt);
+
+    const shouldTool = Math.random() < (intimacy > 80 ? 0.3 : 0.2);
     setTyping(true);
     setTimeout(() => {
       setTyping(false);
-      streamReplies(pickReplies(txt, intimacy));
+      if (shouldTool) {
+        triggerToolCall();
+      } else {
+        streamReplies(pickReplies(txt, intimacy));
+      }
     }, 900);
   }
 
-  // ---- 防冷落：一段时间没互动，TA 主动发消息 ----
+  // ---- 防冷落 ----
   const IDLE_MS = 25000;
-
-  function resetIdleTimer() {
-    if (idleTimer.current) window.clearTimeout(idleTimer.current);
-  }
+  function resetIdleTimer() { if (idleTimer.current) window.clearTimeout(idleTimer.current); }
 
   function proactiveMessage() {
     if (idleCount.current >= 2) return;
@@ -144,38 +139,43 @@ export default function ChatPage() {
       setTyping(false);
       streamReplies(PROACTIVE_MESSAGES[idleCount.current - 1]);
     }, 1200);
-    // 防冷落也加一点好感度
     setIntimacy((prev) => Math.min(100, prev + 1));
     resetIdleTimer();
     idleTimer.current = window.setTimeout(proactiveMessage, IDLE_MS * 2);
   }
 
+  // ---- 报备系统：TA有自己的生活，主动告诉你在干嘛 ----
+  function startReportTimer() {
+    reportTimer.current = window.setTimeout(() => {
+      if (Math.random() < 0.4) { // 40%概率触发报备
+        const msg = REPORT_MESSAGES[Math.floor(Math.random() * REPORT_MESSAGES.length)];
+        streamReplies(msg);
+      }
+      startReportTimer(); // 继续下一轮
+    }, REPORT_INTERVAL);
+  }
+
   useEffect(() => {
     idleTimer.current = window.setTimeout(proactiveMessage, IDLE_MS);
-    return () => { if (idleTimer.current) window.clearTimeout(idleTimer.current); };
+    startReportTimer();
+    return () => {
+      if (idleTimer.current) window.clearTimeout(idleTimer.current);
+      if (reportTimer.current) window.clearTimeout(reportTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 语音模拟（正式版接 STT） */
+  /** 语音模拟 */
   function toggleVoice() {
-    if (!listening) {
-      setListening(true);
-    } else {
-      setListening(false);
-      setInput('我今天有点累');
-    }
+    if (!listening) { setListening(true); }
+    else { setListening(false); setInput('我今天有点累'); }
   }
 
-  const showToast = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2000);
-  };
-
+  const showToast = (msg: string) => { setToast(msg); window.setTimeout(() => setToast(null), 2000); };
   const stageName = getStageName(intimacy);
 
   return (
     <div className="chat-page">
-      {/* 顶栏 */}
       <header className="chat-topbar">
         <button className="back" onClick={() => history.back()}>←</button>
         <div className="partner">
@@ -189,7 +189,6 @@ export default function ChatPage() {
       </header>
 
       <div className="chat-body">
-        {/* 左侧：恋人信息面板 */}
         <aside className="side-panel">
           <div className="side-card">
             <h4>💗 关系进度</h4>
@@ -203,20 +202,15 @@ export default function ChatPage() {
           </div>
           <div className="side-card">
             <h4>🧩 性格标签</h4>
-            <div className="tags">
-              {DEFAULT_PARTNER.tags.map((t) => <span key={t} className="tag">{t}</span>)}
-            </div>
+            <div className="tags">{DEFAULT_PARTNER.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
           </div>
           <div className="side-card">
             <h4>🧠 记得的事</h4>
-            <ul className="memo-list">
-              {DEFAULT_PARTNER.memos.map((m) => <li key={m}>{m}</li>)}
-            </ul>
+            <ul className="memo-list">{DEFAULT_PARTNER.memos.map((m) => <li key={m}>{m}</li>)}</ul>
             <div className="memo-more" onClick={() => showToast('打开记忆页（后续接入）')}>查看全部 →</div>
           </div>
         </aside>
 
-        {/* 右侧：对话流 */}
         <main className="chat-main">
           <div className="chat-box" ref={boxRef}>
             <div className="time-divider">今天 21:04</div>
@@ -241,13 +235,9 @@ export default function ChatPage() {
 
           <div className="chat-input">
             <button className="mic-btn" onClick={toggleVoice}>{listening ? '⏹️' : '🎙️'}</button>
-            <input
-              type="text"
-              value={input}
-              placeholder="说点什么…（Enter 发送）"
+            <input type="text" value={input} placeholder="说点什么…（Enter 发送）"
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') sendMsg(); }}
-            />
+              onKeyDown={(e) => { if (e.key === 'Enter') sendMsg(); }} />
             <button className="send-btn" onClick={sendMsg}>发送</button>
           </div>
           {listening && <div className="voice-ind">🎙️ 正在聆听…（点 ⏹️ 结束）</div>}
@@ -259,18 +249,9 @@ export default function ChatPage() {
   );
 }
 
-/** 初始演示消息 */
 const initialMessages: ChatMessage[] = [
-  {
-    id: 'init1', role: 'ai', time: '21:04',
-    content: '下班了？今天应该挺累的吧。',
-    memoRef: '💬 记得你上周说最近都在加班',
-  },
+  { id: 'init1', role: 'ai', time: '21:04', content: '下班了？今天应该挺累的吧。', memoRef: '💬 记得你上周说最近都在加班' },
   { id: 'init2', role: 'user', time: '21:04', content: '嗯……有一点，感觉快被方案压垮了' },
-  {
-    id: 'init3', role: 'ai', time: '21:05',
-    content: '过来，靠一会儿。方案写不完可以明天写，人垮了就什么都没了。',
-    emotionTag: '💗 共情模式',
-  },
+  { id: 'init3', role: 'ai', time: '21:05', content: '过来，靠一会儿。方案写不完可以明天写，人垮了就什么都没了。', emotionTag: '💗 共情模式' },
   { id: 'init4', role: 'user', time: '21:05', content: '谢谢你……你真好' },
 ];
