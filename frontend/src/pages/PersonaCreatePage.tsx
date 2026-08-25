@@ -1,11 +1,17 @@
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { PersonaDraft, Sex } from '../types/persona';
 import { SEX_OPTIONS, NAME_MAX_LEN, EMPTY_PERSONA_DRAFT } from '../constants/persona';
 import './PersonaCreatePage.css';
 
 /** 人格引擎 - 创建页面（多窗口布局） */
 export default function PersonaCreatePage() {
-  const [draft, setDraft] = useState<PersonaDraft>({ ...EMPTY_PERSONA_DRAFT });
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [draft, setDraft] = useState<PersonaDraft>(() => ({
+    ...EMPTY_PERSONA_DRAFT,
+    ...location.state?.persona,
+  }));
   const [toast, setToast] = useState<string | null>(null);
 
   // ---- 更新草稿 ----
@@ -21,9 +27,7 @@ export default function PersonaCreatePage() {
       showToast('先给 TA 起个名字吧~');
       return;
     }
-    // TODO: 后续接入后端 API 保存
-    console.log('[Persona]', JSON.stringify(draft, null, 2));
-    showToast(`✅ 已保存：${draft.name}${draft.sex ? `（${draft.sex}）` : ''}`);
+    navigate('/chat', { state: { persona: draft, mbti: location.state?.mbti } });
   };
 
   // ---- 重置 ----
@@ -48,7 +52,8 @@ export default function PersonaCreatePage() {
         <h1>SoulMate · 人格引擎</h1>
         <div className="pe-topbar-right">
           <span className="pe-crumb">定制工坊 → 创建恋人</span>
-          <button className="pe-back" onClick={() => history.back()}>← 返回</button>
+          <button className="pe-back" onClick={() => navigate('/mbti')}>🧭 MBTI 测试</button>
+          <button className="pe-back" onClick={() => navigate(-1)}>← 返回</button>
         </div>
       </header>
 

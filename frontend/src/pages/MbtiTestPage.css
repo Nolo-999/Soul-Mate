@@ -1,0 +1,78 @@
+/* ===== MBTI 完整测试页 ===== */
+.mbti-page {
+  max-width: 720px; margin: 0 auto; padding: 24px;
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+
+.mbti-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.mbti-header .back {
+  background: none; border: 1px solid var(--line); color: var(--sub);
+  padding: 6px 14px; border-radius: 10px; cursor: pointer; font-size: 14px;
+}
+.mbti-header .back:hover { border-color: var(--pink); color: var(--pink); }
+.mbti-header h2 { font-size: 20px; font-weight: 800; }
+.progress-txt { font-size: 13px; color: var(--sub); font-weight: 600; }
+
+.progress-bar {
+  height: 8px; border-radius: 6px; background: rgba(255,126,179,0.15);
+  overflow: hidden; margin-bottom: 28px;
+}
+.progress-fill {
+  height: 100%; border-radius: 6px;
+  background: linear-gradient(90deg, var(--pink), var(--lav));
+  transition: width 0.35s ease;
+}
+
+.mbti-card { padding: 32px 28px; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+.mbti-q { font-size: 17px; font-weight: 700; margin-bottom: 10px; line-height: 1.5; }
+.option-btn {
+  width: 100%; text-align: left; padding: 16px 18px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; font-size: 15px; color: var(--txt);
+  cursor: pointer; transition: all 0.2s; line-height: 1.5;
+}
+.option-btn:hover {
+  border-color: var(--pink); background: rgba(255,126,179,0.06);
+  transform: translateY(-1px);
+}
+.option-btn:active { transform: scale(0.98); }
+
+.mbti-footer { text-align: center; margin-top: 20px; }
+.skip-btn {
+  background: none; border: none; color: var(--sub);
+  font-size: 13px; cursor: pointer; text-decoration: underline;
+}
+.skip-btn:hover { color: var(--pink); }
+
+/* ===== 结果页 ===== */
+.mbti-done { text-align: center; padding: 40px 32px; margin-top: 40px; }
+.done-icon { font-size: 56px; margin-bottom: 8px; }
+.mbti-done h2 { font-size: 28px; margin-bottom: 4px; }
+.type-name { color: var(--pink); font-weight: 700; font-size: 18px; margin-bottom: 12px; }
+.type-desc { color: var(--sub); font-size: 14px; line-height: 1.7; margin-bottom: 20px; }
+
+.dim-bars { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.dim-row { display: flex; align-items: center; gap: 10px; }
+.dim-letter { font-weight: 800; font-size: 14px; color: var(--pink); width: 18px; text-align: center; }
+.dim-bar {
+  flex: 1; height: 8px; border-radius: 6px; overflow: hidden;
+  background: rgba(255,126,179,0.12);
+}
+.dim-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--pink), var(--lav)); }
+
+.match-card {
+  background: rgba(255,126,179,0.08); border: 1px solid var(--line);
+  border-radius: 12px; padding: 14px 16px; text-align: left;
+  font-size: 14px; line-height: 1.7; margin-bottom: 24px;
+}
+.match-card b { color: var(--pink); }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--pink), var(--lav));
+  border: none; color: #fff; padding: 12px 28px; border-radius: 24px;
+  font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }

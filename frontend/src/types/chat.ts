@@ -1,7 +1,7 @@
 /** 对话系统 - 类型定义 */
 
 /** 消息角色 */
-export type MsgRole = 'ai' | 'user';
+export type MsgRole = 'ai' | 'user' | 'sys';
 
 /** 单条消息 */
 export interface ChatMessage {

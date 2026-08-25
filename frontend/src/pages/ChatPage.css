@@ -148,3 +148,5 @@
 .msg.sys { justify-content: center; }
 .msg.sys .bubble { background: transparent; color: var(--sub); font-size: 12px; font-style: italic; box-shadow: none; padding: 4px 0; }
 
+
+/* ===== 正在观察（输入检测提示）===== */

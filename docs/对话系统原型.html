@@ -236,6 +236,8 @@ body {
 }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 </style>
+
+/* ===== 正在观察（输入检测提示）===== */
 <script>
 // ===== 好感度系统 =====
 var intimacy = 62;
@@ -286,10 +288,9 @@ var chatterboxReplies = [
 // ===== 撤回替换池 =====
 var retractPool = ['……我重新说。', '打错了，你当我没说。', '（清了清嗓子）重来。', '……算了，你当我没说。'];
 
-// ===== 报备系统：TA有自己的生活，主动告诉你在干嘛 =====
-var REPORT_INTERVAL = 60000; // 60秒报备一次
+// ===== 报备系统 =====
+var REPORT_INTERVAL = 60000;
 var reportTimer = null;
-
 var reportMessages = [
   ['刚查完房，23床终于退烧了。', '可以稍微喘口气了。'],
   ['在写病历……写得我头疼。', '你那边怎么样？'],
@@ -302,74 +303,101 @@ var reportMessages = [
   ['医院的咖啡真难喝。', '想念楼下那家拿铁。'],
   ['刚给病人换完药。', '他的伤口恢复得不错。', '……我说这个你不会觉得无聊吧？']
 ];
-
 function startReportTimer() {
   reportTimer = setTimeout(function () {
-    if (Math.random() < 0.4) { // 40%概率触发报备
-      var msg = reportMessages[Math.floor(Math.random() * reportMessages.length)];
-      streamReplies(msg);
+    if (Math.random() < 0.4) {
+      streamReplies(reportMessages[Math.floor(Math.random() * reportMessages.length)]);
     }
-    startReportTimer(); // 继续下一轮
+    startReportTimer();
   }, REPORT_INTERVAL);
 }
 startReportTimer();
 
-// ===== 工具/玩法系统：TA能"调用"互动功能 =====
+// ===== 工具/玩法系统 =====
 var toolCalls = [
-  {
-    emoji: '🎵', name: '哼歌',
-    messages: ['（哼起了歌）', '一闪一闪亮晶晶~', '……别笑，我唱歌就这样。']
-  },
-  {
-    emoji: '📸', name: '拍照',
-    messages: ['（掏出手机拍了张照）', '给你看，窗外的晚霞。', '今天的天空很好看。']
-  },
-  {
-    emoji: '😊', name: '发表情包',
-    messages: ['（发了个表情包）', '🐱 一只猫趴在桌上打瞌睡', '像不像你现在的样子？']
-  },
-  {
-    emoji: '💡', name: '冷知识',
-    messages: ['突然想到一个冷知识。', '人的鼻子可以记住5万种气味。', '……所以你身上的味道，我记得。']
-  },
-  {
-    emoji: '💊', name: '开处方',
-    messages: ['（开了一张处方）', '诊断：想太多。', '处方：今晚早睡，明天来找我。', '忌：熬夜。']
-  },
-  {
-    emoji: '🎮', name: '猜数字',
-    messages: ['玩个游戏吧。', '我想了一个1-100的数字，你猜。', '（其实没有真的在玩，就是想逗你）']
-  },
-  {
-    emoji: '🍜', name: '关心吃饭',
-    messages: ['你吃饭了吗？', '别告诉我又在啃面包。', '胃不好就少折腾。']
-  },
-  {
-    emoji: '🌙', name: '晚安曲',
-    messages: ['困了吗？', '那我给你唱首歌哄你睡吧。', '（轻轻哼起了旋律）', '晚安，好梦。']
-  }
+  { emoji: '🎵', name: '哼歌', messages: ['（哼起了歌）', '一闪一闪亮晶晶~', '……别笑，我唱歌就这样。'] },
+  { emoji: '📸', name: '拍照', messages: ['（掏出手机拍了张照）', '给你看，窗外的晚霞。', '今天的天空很好看。'] },
+  { emoji: '😊', name: '发表情包', messages: ['（发了个表情包）', '🐱 一只猫趴在桌上打瞌睡', '像不像你现在的样子？'] },
+  { emoji: '💡', name: '冷知识', messages: ['突然想到一个冷知识。', '人的鼻子可以记住5万种气味。', '……所以你身上的味道，我记得。'] },
+  { emoji: '💊', name: '开处方', messages: ['（开了一张处方）', '诊断：想太多。', '处方：今晚早睡，明天来找我。', '忌：熬夜。'] },
+  { emoji: '🎮', name: '猜数字', messages: ['玩个游戏吧。', '我想了一个1-100的数字，你猜。', '（其实没有真的在玩，就是想逗你）'] },
+  { emoji: '🍜', name: '关心吃饭', messages: ['你吃饭了吗？', '别告诉我又在啃面包。', '胃不好就少折腾。'] },
+  { emoji: '🌙', name: '晚安曲', messages: ['困了吗？', '那我给你唱首歌哄你睡吧。', '（轻轻哼起了旋律）', '晚安，好梦。'] }
 ];
-
 function shouldTriggerTool() {
-  // 20%概率触发工具调用（亲密档30%）
   return Math.random() < (intimacy > 80 ? 0.3 : 0.2);
 }
-
 function triggerToolCall() {
   var tool = toolCalls[Math.floor(Math.random() * toolCalls.length)];
-  // 先发工具提示
   appendMsg('sys', tool.emoji + ' 沈知夏' + tool.name + '了');
   var box = document.getElementById('chat-box');
   box.scrollTop = box.scrollHeight;
-  // 然后发工具内容
-  setTimeout(function () {
-    streamReplies(tool.messages);
-  }, 800);
+  setTimeout(function () { streamReplies(tool.messages); }, 800);
 }
 
-// ===== 回复池（按好感度分档）=====
+// ===== 输入检测 + 消息聚合成批回复 =====
+var pendingMessages = [];   // 等待期内的用户消息
+var replyTimer = null;       // 回复等待计时器
+var REPLY_WAIT_MS = 4000;   // 等待4秒（用户停了才回复）
+
+function onInputKeydown(e) {
+  // 输入框获得焦点时，标记用户可能在打字
+  document.getElementById('chat-text').dataset.typing = 'true';
+}
+
+function onInputBlur() {
+  document.getElementById('chat-text').dataset.typing = 'false';
+}
+
+// 发送消息时，聚合成批回复
+function sendMsg() {
+  var input = document.getElementById('chat-text');
+  var txt = input.value.trim();
+  if (!txt) return;
+  appendMsg('user', txt);
+  input.value = '';
+  resetIdleTimer();
+  adjustIntimacyForMessage(txt);
+
+  // 加入待处理队列
+  pendingMessages.push(txt);
+
+  // 重置等待计时器（每次新消息都重新计时）
+  if (replyTimer) clearTimeout(replyTimer);
+  replyTimer = setTimeout(processPendingReplies, REPLY_WAIT_MS);
+
+}
+
+// 等待期结束，处理所有待回复消息
+function processPendingReplies() {
+  if (pendingMessages.length === 0) return;
+
+  // 合并最近的消息作为上下文
+  var context = pendingMessages.join(' ');
+  pendingMessages = [];
+
+
+  // 显示"正在输入"提示
+  var typing = document.getElementById('typing');
+  typing.style.display = 'flex';
+  var box = document.getElementById('chat-box');
+  box.scrollTop = box.scrollHeight;
+
+  setTimeout(function () {
+    typing.style.display = 'none';
+    // 工具调用检测
+    if (shouldTriggerTool()) {
+      triggerToolCall();
+    } else {
+      var replies = pickReply(context);
+      streamReplies(replies);
+    }
+  }, 900);
+}
+
+// "正在观察"提示（用户在打字时TA在看）
+// ===== 回复池（按好感度分档，支持多条消息上下文）=====
 function pickReply(txt) {
-  // 话痨模式：15%概率触发（亲密档25%）
   var chance = intimacy > 80 ? 0.25 : 0.15;
   if (Math.random() < chance) {
     return chatterboxReplies[Math.floor(Math.random() * chatterboxReplies.length)];
@@ -425,41 +453,6 @@ function pickReply(txt) {
   return replies;
 }
 
-// ===== 发送消息 =====
-function sendMsg() {
-  var input = document.getElementById('chat-text');
-  var txt = input.value.trim();
-  if (!txt) return;
-  appendMsg('user', txt);
-  input.value = '';
-  resetIdleTimer();
-  adjustIntimacyForMessage(txt);
-
-  // 20%概率触发工具调用
-  if (shouldTriggerTool()) {
-    var typing = document.getElementById('typing');
-    typing.style.display = 'flex';
-    var box = document.getElementById('chat-box');
-    box.scrollTop = box.scrollHeight;
-    setTimeout(function () {
-      typing.style.display = 'none';
-      triggerToolCall();
-    }, 900);
-  } else {
-    // 正常AI回复
-    var typing = document.getElementById('typing');
-    typing.style.display = 'flex';
-    var box = document.getElementById('chat-box');
-    box.scrollTop = box.scrollHeight;
-    setTimeout(function () {
-      typing.style.display = 'none';
-      var replies = pickReply(txt);
-      streamReplies(replies);
-    }, 900);
-  }
-}
-function onEnter(e) { if (e.key === 'Enter') sendMsg(); }
-
 // ===== 逐条发送（支持撤回）=====
 function streamReplies(list) {
   var box = document.getElementById('chat-box');
@@ -481,31 +474,15 @@ function streamReplies(list) {
   } else {
     appendMsg('ai', list[0]);
     box.scrollTop = box.scrollHeight;
-
-    setTimeout(function () {
-      appendMsg('sys', '（撤回了一条消息）');
-      box.scrollTop = box.scrollHeight;
-    }, 800);
-
-    setTimeout(function () {
-      appendMsg('ai', retractPool[Math.floor(Math.random() * retractPool.length)]);
-      box.scrollTop = box.scrollHeight;
-    }, 1400);
-
+    setTimeout(function () { appendMsg('sys', '（撤回了一条消息）'); box.scrollTop = box.scrollHeight; }, 800);
+    setTimeout(function () { appendMsg('ai', retractPool[Math.floor(Math.random() * retractPool.length)]); box.scrollTop = box.scrollHeight; }, 1400);
     setTimeout(function () {
       appendMsg('ai', list[0]);
       box.scrollTop = box.scrollHeight;
-
       var i = 1;
       function nextRest() {
         if (i >= list.length) return;
-        var delay = 300 + Math.random() * 700;
-        setTimeout(function () {
-          appendMsg('ai', list[i]);
-          box.scrollTop = box.scrollHeight;
-          i++;
-          nextRest();
-        }, delay);
+        setTimeout(function () { appendMsg('ai', list[i]); box.scrollTop = box.scrollHeight; i++; nextRest(); }, 300 + Math.random() * 700);
       }
       nextRest();
     }, 2000);
@@ -530,14 +507,8 @@ function escapeHtml(s) {
 var idleTimer = null;
 var idleCount = 0;
 var IDLE_MS = 25000;
-
-function startIdleTimer() {
-  resetIdleTimer();
-  idleTimer = setTimeout(proactiveMessage, IDLE_MS);
-}
-function resetIdleTimer() {
-  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-}
+function startIdleTimer() { resetIdleTimer(); idleTimer = setTimeout(proactiveMessage, IDLE_MS); }
+function resetIdleTimer() { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } }
 function proactiveMessage() {
   if (idleCount >= 2) return;
   idleCount++;
@@ -566,14 +537,8 @@ startIdleTimer();
 function toggleVoice() {
   var v = document.getElementById('voice-ind');
   var btn = document.getElementById('mic-btn');
-  if (v.style.display === 'none') {
-    v.style.display = 'block';
-    btn.textContent = '⏹️';
-  } else {
-    v.style.display = 'none';
-    btn.textContent = '🎙️';
-    document.getElementById('chat-text').value = '我今天有点累';
-  }
+  if (v.style.display === 'none') { v.style.display = 'block'; btn.textContent = '⏹️'; }
+  else { v.style.display = 'none'; btn.textContent = '🎙️'; document.getElementById('chat-text').value = '我今天有点累'; }
 }
 
 // ===== Toast =====
