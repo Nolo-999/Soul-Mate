@@ -1,0 +1,151 @@
+/* ===== Live2D 展示页 ===== */
+
+.showcase-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+  min-height: 100vh;
+}
+
+.showcase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.showcase-header .back {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--sub);
+  padding: 6px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.showcase-header .back:hover { border-color: var(--pink); color: var(--pink); }
+.showcase-header h2 { font-size: 20px; font-weight: 800; }
+
+.status {
+  font-size: 13px;
+  color: var(--sub);
+}
+
+.status.ok {
+  color: #4ecdc4;
+  font-weight: 600;
+}
+
+.showcase-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+/* 角色画布 */
+.showcase-canvas {
+  width: 100%;
+  height: 560px;
+  background: linear-gradient(135deg, rgba(255,126,179,0.04), rgba(178,126,255,0.04));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+}
+
+.showcase-canvas::after {
+  content: '点击角色触发动作';
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: var(--sub);
+  opacity: 0.5;
+}
+
+/* 控制面板 */
+.showcase-controls {
+  padding: 24px;
+  position: sticky;
+  top: 24px;
+}
+
+.showcase-controls h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  color: var(--pink);
+}
+
+.mood-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.mood-btn {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.mood-btn:hover {
+  border-color: var(--btn-color, var(--pink));
+  background: rgba(255, 126, 179, 0.06);
+}
+
+.mood-btn.active {
+  border-color: var(--btn-color, var(--pink));
+  background: rgba(255, 126, 179, 0.12);
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(255, 126, 179, 0.15);
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--sub);
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.tips {
+  margin-top: 20px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.tips b {
+  color: var(--pink);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.tips ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--sub);
+}
+
+/* 响应式 */
+@media (max-width: 720px) {
+  .showcase-body {
+    grid-template-columns: 1fr;
+  }
+  .showcase-canvas {
+    height: 400px;
+  }
+  .showcase-controls {
+    position: static;
+  }
+}
