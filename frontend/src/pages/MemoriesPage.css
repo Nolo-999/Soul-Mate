@@ -1,0 +1,63 @@
+/* ===== 记忆卡片墙 ===== */
+.mem-page {
+  max-width: 1100px; margin: 0 auto; padding: 20px 28px 40px; width: 100%;
+}
+
+.mem-header {
+  display: flex; align-items: center; gap: 16px; margin-bottom: 18px;
+}
+.mem-header h2 { font-size: 18px; font-weight: 800; color: var(--txt); }
+.back {
+  background: none; border: 1px solid var(--line); color: var(--sub);
+  padding: 6px 14px; border-radius: 10px; cursor: pointer; font-size: 14px; text-decoration: none;
+}
+.back:hover { border-color: var(--pink); color: var(--pink); }
+
+.mem-tabs { margin-left: auto; display: flex; gap: 6px; }
+.mem-tab {
+  border: 1px solid var(--line); background: transparent; color: var(--sub);
+  padding: 6px 16px; border-radius: 14px; cursor: pointer; font-size: 13px;
+}
+.mem-tab.on { background: var(--pink); border-color: var(--pink); color: #fff; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+}
+
+/* 手动新增栏 */
+.mem-add { display: flex; gap: 10px; padding: 12px; margin-bottom: 18px; }
+.mem-add input {
+  flex: 1; border: none; outline: none; font-size: 14px; color: var(--txt);
+  background: transparent; padding: 4px 8px;
+}
+.mem-add button {
+  border: none; border-radius: 18px; padding: 8px 22px; cursor: pointer;
+  background: linear-gradient(135deg, var(--pink), var(--lav)); color: #fff; font-weight: 700;
+}
+
+.mem-loading, .mem-empty { text-align: center; color: var(--sub); padding: 60px 0; }
+
+/* 卡片网格 */
+.mem-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px;
+}
+.mem-card { position: relative; padding: 16px; transition: box-shadow 0.2s ease, transform 0.2s ease; }
+.mem-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255, 126, 179, 0.15); }
+.mem-card.pinned { border-color: rgba(255, 126, 179, 0.55); }
+.mem-card.foggy { opacity: 0.45; filter: grayscale(0.6); }
+
+.mem-cat { font-size: 11px; color: var(--pink); background: rgba(255,126,179,0.08); padding: 3px 10px; border-radius: 10px; }
+.mem-content { font-size: 14px; line-height: 1.6; margin: 10px 0 6px; color: var(--txt); word-break: break-all; }
+.mem-src { font-size: 11px; color: var(--sub); opacity: 0.7; }
+
+.mem-actions {
+  display: flex; align-items: center; gap: 6px; margin-top: 12px; padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+.mem-actions button {
+  width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent;
+  cursor: pointer; font-size: 15px; opacity: 0.5; transition: all 0.15s;
+}
+.mem-actions button:hover { background: rgba(255,126,179,0.1); opacity: 1; }
+.mem-actions button.on { opacity: 1; background: rgba(255,126,179,0.12); }
+.mem-importance { margin-left: auto; font-size: 11px; color: #ff9eb3; letter-spacing: 1px; }

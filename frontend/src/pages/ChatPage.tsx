@@ -5,7 +5,10 @@ import type { PersonaDraft } from '../types/persona';
 import {
   pickReplies, PROACTIVE_MESSAGES, DEFAULT_PARTNER, RETRACT_POOL,
   REPORT_INTERVAL, REPORT_MESSAGES, TOOL_CALLS,
+  inferEmotion, TOOL_CALL_MOODS, type ChatEmotion,
 } from '../constants/chat';
+import Live2DCharacter from '../components/live2d/Live2DCharacter';
+import { listMemories, recallMemories, extractMemories, type MemoryItem } from '../api/memory';
 import './ChatPage.css';
 
 /** 好感度阶段名 */
@@ -19,6 +22,15 @@ function getStageName(val: number): string {
 
 /** 等待用户停止输入的时间（ms） */
 const REPLY_WAIT_MS = 4000;
+
+/** 情绪表情持续多久后回落到平静（ms） */
+const MOOD_DECAY_MS = 12000;
+
+/** 情绪徽标文案 */
+const MOOD_LABELS: Record<ChatEmotion, string> = {
+  happy: '😊 开心', shy: '😳 害羞', sad: '🥺 心疼',
+  angry: '😠 生气', flirty: '😏 撩人', surprise: '😮 惊讶', neutral: '😌 平静',
+};
 
 /** 对话系统页面 */
 export default function ChatPage() {
@@ -36,6 +48,17 @@ export default function ChatPage() {
   const [listening, setListening] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [intimacy, setIntimacy] = useState(DEFAULT_PARTNER.intimacy);
+  const [mood, setMood] = useState<ChatEmotion>('neutral'); // 驱动 Live2D 表情
+  const [live2dError, setLive2dError] = useState<string | null>(null);
+  const moodTimer = useRef<number | null>(null);
+  // ---- 桌宠层：悬浮 + 可拖拽 ----
+  const petRef = useRef<HTMLDivElement>(null);
+  const [petPos, setPetPos] = useState<{ x: number; y: number } | null>(null); // null=默认停靠位
+  const [dragging, setDragging] = useState(false);
+  const dragState = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0 });
+  const justDraggedRef = useRef(false); // 拖完后短暂屏蔽点击，防止误触发摸头动作
+  // ---- 记忆模块 ----
+  const [memories, setMemories] = useState<MemoryItem[]>([]);   // 侧栏「记得的事」
   const idleTimer = useRef<number | null>(null);
   const reportTimer = useRef<number | null>(null);
   const replyTimer = useRef<number | null>(null);
@@ -64,16 +87,28 @@ export default function ChatPage() {
     });
   }
 
-  /** 追加一条消息 */
+  /** 追加一条消息（memoRef：记忆引用文案，可选） */
   function appendMsg(role: ChatMessage['role'], content: string, extra?: Partial<ChatMessage>) {
     setMessages((prev) => [...prev, { id: nextId(), role, content, time: now(), ...extra }]);
     scrollBottom();
   }
 
-  /** 逐条蹦出 AI 回复（拟人化节奏，支持撤回） */
-  function streamReplies(list: string[]) {
+  /** 刷新侧栏「记得的事」（取最近5条活跃记忆） */
+  async function refreshMemories() {
+    try {
+      setMemories(await listMemories('active'));
+    } catch {
+      // 后端没起就保持现状，不影响聊天
+    }
+  }
+
+  /** 逐条蹦出 AI 回复（拟人化节奏，支持撤回；memoRef 为真实记忆引用，可选） */
+  function streamReplies(list: string[], memoRef?: string) {
     const box = boxRef.current;
     const shouldRetract = Math.random() < 0.1 && list.length >= 2;
+
+    // 情绪联动：AI 开口说话时，形象同步变表情
+    reactToAiReply(list);
 
     if (!shouldRetract) {
       let i = 0;
@@ -81,7 +116,8 @@ export default function ChatPage() {
         if (i >= list.length) return;
         const delay = i === 0 ? 0 : 300 + Math.random() * 700;
         schedule(() => {
-          appendMsg('ai', list[i]);
+          // 记忆引用挂在第一条 AI 消息上
+          appendMsg('ai', list[i], i === 0 && memoRef ? { memoRef: `💬 ${memoRef}` } : undefined);
           if (box) box.scrollTop = box.scrollHeight;
           i++;
           next();
@@ -108,9 +144,12 @@ export default function ChatPage() {
 
   /** 触发工具调用 */
   function triggerToolCall() {
-    const tool = TOOL_CALLS[Math.floor(Math.random() * TOOL_CALLS.length)];
+    const idx = Math.floor(Math.random() * TOOL_CALLS.length);
+    const tool = TOOL_CALLS[idx];
     appendMsg('sys', `${tool.emoji} ${partner.name}${tool.name}了`);
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    // 工具玩法也有专属表情
+    setMoodWithDecay(TOOL_CALL_MOODS[tool.name] ?? 'happy');
     schedule(() => streamReplies(tool.messages), 800);
   }
 
@@ -133,7 +172,7 @@ export default function ChatPage() {
   }
 
   /** 处理待回复消息（等待用户停了再统一回复） */
-  function processPendingReplies() {
+  async function processPendingReplies() {
     if (pendingMessages.current.length === 0) return;
 
     const context = pendingMessages.current.join(' ');
@@ -142,12 +181,24 @@ export default function ChatPage() {
     setTyping(true);
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
 
+    // 记忆召回：只引用**之前**存下的记忆（本轮内容还没入库，不会自我复读）
+    let memoRef: string | undefined;
+    try {
+      const hits = await recallMemories(context, 1);
+      if (hits[0]) memoRef = `还记得你说过「${hits[0].content}」`;
+    } catch {
+      // 后端没起就跳过，不影响聊天
+    }
+
+    // 异步提取入库（fire-and-forget，完成后刷新侧栏）
+    void extractMemories(context, context).then(() => refreshMemories());
+
     schedule(() => {
       setTyping(false);
       if (Math.random() < (intimacyRef.current > 80 ? 0.3 : 0.2)) {
         triggerToolCall();
       } else {
-        streamReplies(pickReplies(context, intimacyRef.current));
+        streamReplies(pickReplies(context, intimacyRef.current), memoRef);
       }
     }, 900);
   }
@@ -207,10 +258,12 @@ export default function ChatPage() {
     const timers = delayedTimers.current;
     idleTimer.current = window.setTimeout(proactiveMessage, IDLE_MS);
     startReportTimer();
+    void refreshMemories(); // 进页面加载「记得的事」
     return () => {
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
       if (reportTimer.current) window.clearTimeout(reportTimer.current);
       if (replyTimer.current) window.clearTimeout(replyTimer.current);
+      if (moodTimer.current) window.clearTimeout(moodTimer.current);
       timers.forEach((timer) => window.clearTimeout(timer));
       timers.clear();
     };
@@ -223,6 +276,61 @@ export default function ChatPage() {
   }
 
   const showToast = (msg: string) => { setToast(msg); schedule(() => setToast(null), 2000); };
+
+  /** 情绪 → Live2D 表情联动（带自动回落到平静） */
+  function setMoodWithDecay(next: ChatEmotion) {
+    if (moodTimer.current) window.clearTimeout(moodTimer.current);
+    setMood(next === 'neutral' ? 'neutral' : next);
+    if (next !== 'neutral') {
+      moodTimer.current = window.setTimeout(() => setMood('neutral'), MOOD_DECAY_MS + Math.random() * 4000);
+    }
+  }
+
+  /** AI 回复 → 推断情绪并驱动形象 */
+  function reactToAiReply(list: string[]) {
+    const emotion = inferEmotion(list.join(' '), intimacyRef.current);
+    setMoodWithDecay(emotion);
+  }
+
+  // ---- 桌宠拖拽（pointer events，兼容鼠标/触屏） ----
+  function onPetPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return; // 只响应左键
+    const el = petRef.current;
+    if (!el) return;
+
+    const rect = el.getBoundingClientRect();
+    dragState.current = {
+      dragging: true,
+      moved: false,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: petPos?.x ?? rect.left,
+      originY: petPos?.y ?? rect.top,
+    };
+    setDragging(true);
+    el.setPointerCapture(e.pointerId);
+  }
+
+  function onPetPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const st = dragState.current;
+    if (!st.dragging) return;
+    const dx = e.clientX - st.startX;
+    const dy = e.clientY - st.startY;
+    if (!st.moved && Math.abs(dx) + Math.abs(dy) > 4) st.moved = true;
+    if (st.moved) setPetPos({ x: st.originX + dx, y: st.originY + dy });
+  }
+
+  function onPetPointerUp() {
+    const st = dragState.current;
+    if (!st.dragging) return;
+    st.dragging = false;
+    setDragging(false);
+    if (st.moved) {
+      // 拖完后短暂屏蔽点击，防止松手误触发摸头动作
+      justDraggedRef.current = true;
+      window.setTimeout(() => { justDraggedRef.current = false; }, 250);
+    }
+  }
   const stageName = getStageName(intimacy);
 
   return (
@@ -238,6 +346,33 @@ export default function ChatPage() {
         </div>
         <button className="edit-btn" onClick={() => navigate('/', { state: { persona: routePersona } })}>✏️ 改设定</button>
       </header>
+
+      {/* ===== 桌宠层：无边框悬浮形象，可拖拽、可摸头 ===== */}
+      <div
+        ref={petRef}
+        className={`desktop-pet ${dragging ? 'dragging' : ''} ${live2dError ? 'error' : ''}`}
+        style={petPos ? { left: `${petPos.x}px`, top: `${petPos.y}px` } : undefined}
+        onPointerDown={onPetPointerDown}
+        onPointerMove={onPetPointerMove}
+        onPointerUp={onPetPointerUp}
+        onPointerCancel={onPetPointerUp}
+        onClick={() => {
+          if (justDraggedRef.current) return; // 刚拖完不算点击
+          setMoodWithDecay('happy'); // 内层组件会播 Tap 动作，这里叠加开心表情
+        }}
+      >
+        {live2dError ? (
+          <div className="pet-fallback">{partner.avatar}</div>
+        ) : (
+          <Live2DCharacter
+            mood={mood}
+            visible={true}
+            onReady={() => setLive2dError(null)}
+            onError={(err) => setLive2dError(err.message)}
+          />
+        )}
+        <span className={`pet-mood-badge mood-${mood}`}>{MOOD_LABELS[mood]}</span>
+      </div>
 
       <div className="chat-body">
         <aside className="side-panel">
@@ -257,8 +392,16 @@ export default function ChatPage() {
           </div>
           <div className="side-card">
             <h4>🧠 记得的事</h4>
-            <ul className="memo-list">{DEFAULT_PARTNER.memos.map((m) => <li key={m}>{m}</li>)}</ul>
-            <div className="memo-more" onClick={() => showToast('打开记忆页（后续接入）')}>查看全部 →</div>
+            {memories.length > 0 ? (
+              <ul className="memo-list">
+                {memories.slice(0, 5).map((m) => (
+                  <li key={m.id}>{m.pinned ? '⭐ ' : ''}{m.content}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="memo-empty">还没有记忆，多和 TA 聊聊吧～</p>
+            )}
+            <div className="memo-more" onClick={() => navigate('/memories')}>查看全部 →</div>
           </div>
         </aside>
 

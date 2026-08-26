@@ -59,8 +59,60 @@
 }
 .memo-list { list-style: none; font-size: 12px; }
 .memo-list li { padding: 4px 0; color: var(--txt); }
+.memo-empty { font-size: 12px; color: var(--sub); opacity: 0.7; padding: 4px 0; }
 .memo-more { font-size: 11px; color: var(--sub); text-align: right; margin-top: 6px; cursor: pointer; }
 .memo-more:hover { color: var(--pink); }
+
+/* ===== 桌宠层：无边框悬浮形象（像住在屏幕上的小人） ===== */
+.desktop-pet {
+  position: fixed;
+  right: 56px; bottom: 96px;      /* 默认停靠位：右下角 */
+  width: 250px; height: 310px;
+  z-index: 50;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;             /* 触屏拖拽不滚动页面 */
+  filter: drop-shadow(0 8px 20px rgba(255, 126, 179, 0.18));
+  transition: filter 0.2s ease;
+}
+.desktop-pet:hover { filter: drop-shadow(0 10px 24px rgba(255, 126, 179, 0.32)); }
+.desktop-pet.dragging { cursor: grabbing; }
+/* 拖拽中：内层组件不抢指针事件，避免干扰拖动 */
+.desktop-pet.dragging .live2d-container { pointer-events: none; }
+
+/* 形象加载失败的 emoji 兜底（同样无框） */
+.pet-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 72px;
+}
+
+/* 情绪徽标：平时隐藏，悬停/拖拽时从头顶浮现（像小气泡） */
+.pet-mood-badge {
+  position: absolute; left: 50%; top: -6px;
+  transform: translateX(-50%) translateY(6px);
+  font-size: 11px; white-space: nowrap;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  color: var(--txt);
+  padding: 3px 12px; border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(255, 126, 179, 0.15);
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+  z-index: 3;
+}
+.desktop-pet:hover .pet-mood-badge,
+.desktop-pet.dragging .pet-mood-badge {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.pet-mood-badge.mood-happy    { border-color: var(--pink); color: var(--pink); }
+.pet-mood-badge.mood-shy      { border-color: #ff9ec6; color: #ff6ba3; }
+.pet-mood-badge.mood-sad      { border-color: #7eb3ff; color: #5a8fd4; }
+.pet-mood-badge.mood-angry    { border-color: #ff5555; color: #e04848; }
+.pet-mood-badge.mood-flirty   { border-color: #c86eb3; color: #b55aa0; }
+.pet-mood-badge.mood-surprise { border-color: #ffb87e; color: #e89b5a; }
 
 /* ===== 对话流 ===== */
 .chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }

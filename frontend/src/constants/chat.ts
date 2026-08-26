@@ -134,3 +134,38 @@ export const TOOL_CALLS: ToolCall[] = [
   { emoji: '🍜', name: '关心吃饭', messages: ['你吃饭了吗？', '别告诉我又在啃面包。', '胃不好就少折腾。'] },
   { emoji: '🌙', name: '晚安曲', messages: ['困了吗？', '那我给你唱首歌哄你睡吧。', '（轻轻哼起了旋律）', '晚安，好梦。'] },
 ];
+
+/** 工具玩法 → 角色情绪（触发工具调用时的表情） */
+export const TOOL_CALL_MOODS: Record<string, ChatEmotion> = {
+  哼歌: 'happy',
+  拍照: 'surprise',
+  发表情包: 'happy',
+  冷知识: 'surprise',
+  开处方: 'neutral',
+  猜数字: 'happy',
+  关心吃饭: 'neutral',
+  晚安曲: 'happy',
+};
+
+/** 聊天情绪类型（与 Live2D 表情映射表对齐） */
+export type ChatEmotion = 'happy' | 'shy' | 'sad' | 'angry' | 'flirty' | 'surprise' | 'neutral';
+
+/**
+ * 情绪推断引擎：从文本推断角色当前情绪
+ * 用于驱动 Live2D 形象的表情/动作联动
+ */
+export function inferEmotion(text: string, _intimacy?: number): ChatEmotion {
+  const t = text.trim();
+  if (!t) return 'neutral';
+
+  // 生气：被骂了
+  if (/滚|傻|蠢|白痴|闭嘴|讨厌|烦人|走开/.test(t)) return 'angry';
+  // 难过：用户诉苦 / 自己委屈失落
+  if (/累|压力|加班|烦|崩溃|难过|哭|伤心|辛苦|委屈|失眠|生病|在忙|没回我|冒泡|等我/.test(t)) return 'sad';
+  // 害羞：听到情话
+  if (/想|爱|喜欢|抱抱|亲亲|宝贝|亲爱的|想你|爱你/.test(t)) return 'shy';
+  // 开心：笑点 / 夸奖 / 好消息
+  if (/哈哈|嘻嘻|笑死|开心|高兴|好耶|太好了|真棒|好厉害|好可爱|喜欢你呀|牛/.test(t)) return 'happy';
+
+  return 'neutral';
+}
