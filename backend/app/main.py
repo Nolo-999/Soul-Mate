@@ -8,12 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.memories import router as memories_router
-from app.database import Base, engine
+from app.api.v1.voice import router as voice_router
+from app.database import ensure_schema
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    Base.metadata.create_all(bind=engine)  # 初版直接建表；迁移用 alembic（后续）
+    ensure_schema()  # 建表 + 轻量列迁移；正式迁移用 alembic（后续）
     yield
 
 
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(memories_router, prefix="/api/v1")
+app.include_router(voice_router, prefix="/api/v1")
 
 
 @app.get("/api/health")
