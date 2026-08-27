@@ -25,3 +25,12 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_schema() -> None:
+    """建表 + 轻量列迁移（SQLite ALTER ADD COLUMN，已存在则跳过）"""
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(memory_unit)")}
+        if "superseded_by" not in cols:
+            conn.exec_driver_sql("ALTER TABLE memory_unit ADD COLUMN superseded_by INTEGER")

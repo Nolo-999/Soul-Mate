@@ -43,6 +43,44 @@ EXTRACT_PROMPT = """你是记忆提取助手。从下面的对话里提取「值
 对话：
 {dialogue}"""
 
+# 语义重排（优化#1）：让"面试"能召回"求职"这类不同词同义的记忆
+RERANK_PROMPT = """判断每条记忆与查询的相关性。输出 JSON 数组，每项 {{"id": 序号, "score": 0到10的整数}}。
+判定标准：话题相同或语义相关才给高分；仅共享一个常见字词算低分。只输出 JSON。
+
+查询：{query}
+记忆列表：
+{lines}"""
+
+# 矛盾检测（优化#2）：用户改口时新记忆覆盖旧的。
+# 逐条询问式：一次只判一条新记忆（7B 小模型对复杂多对象输出容易失手），
+# 新旧配对由代码构造，天然无歧义
+CONFLICT_PROMPT = """判断「新记忆」是否与某条旧记忆互相矛盾（同一事实前后不一致：改口味、换计划、状态反转等）。
+只是相关或可以共存的都不算矛盾。矛盾则输出矛盾的旧记忆编号数组（如 [3]），不矛盾输出 []。只输出 JSON。
+
+新记忆：{new_text}
+
+旧记忆：
+{old_lines}"""
+
+OLLAMA_RERANK_TIMEOUT = 45  # 重排/冲突判定输入较大，放宽超时；超时走降级不影响主流程
+RECALL_MIN_SCORE = 4        # 语义重排的相关性阈值（0~10）：低于视为不相关，直接不召回
+
+
+async def _ollama_generate(prompt: str, timeout: int = OLLAMA_TIMEOUT) -> str | None:
+    """调 Ollama 生成文本；任何失败返回 None（调用方自行零风险降级）。"""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(
+                f"{OLLAMA_BASE}/api/generate",
+                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
+                      "options": {"temperature": 0.1}},
+            )
+            resp.raise_for_status()
+            return resp.json().get("response", "")
+    except Exception as exc:  # noqa: BLE001 —— 降级是设计行为
+        logger.warning("ollama call skipped: %s", exc)
+        return None
+
 
 def contains_sensitive(text: str) -> bool:
     """命中敏感信息（身份证/手机号/密码类词）→ 不落库"""
@@ -62,21 +100,17 @@ def _dedupe_texts(texts: list[str]) -> list[str]:
 async def extract_memories(dialogue: str) -> list[dict]:
     """调 Ollama 抽取候选记忆。任何失败 → 空列表（静默降级）。"""
     prompt = EXTRACT_PROMPT.format(dialogue=dialogue[-1500:])  # 截断防超长
+    raw = await _ollama_generate(prompt)
+    if not raw:
+        return []
+
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    if not match:
+        return []
     try:
-        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
-            resp = await client.post(
-                f"{OLLAMA_BASE}/api/generate",
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
-                      "options": {"temperature": 0.1}},
-            )
-            resp.raise_for_status()
-        raw = resp.json().get("response", "")
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
-            return []
         items = json.loads(match.group())
-    except Exception as exc:  # noqa: BLE001 —— 降级是设计行为
-        logger.warning("memory extraction skipped: %s", exc)
+    except json.JSONDecodeError:
+        logger.warning("extract output is not valid JSON")
         return []
 
     cleaned: list[dict] = []
@@ -130,39 +164,195 @@ def days_since(dt: datetime) -> float:
 
 
 def recall_memories(db: Session, query: str, top_k: int = 3) -> list[MemoryUnit]:
-    """召回：关键词重合 × 置顶加成 × 时间衰减（优化路线 #4 的初版形态）"""
+    """召回：关键词粗筛 → 时间/重要性/置顶加权 → LLM 语义重排（失败自动退回纯关键词序）"""
     q_tokens = tokenize(query)
-    candidates = (
+    all_active = (
         db.query(MemoryUnit)
         .filter(MemoryUnit.forgotten.is_(False), MemoryUnit.archived.is_(False))
         .all()
     )
-    scored: list[tuple[float, MemoryUnit]] = []
-    for mem in candidates:
-        overlap = len(q_tokens & tokenize(mem.content))
-        if overlap == 0:
-            continue
-        score = overlap * (2.0 if mem.pinned else 1.0)
-        score *= max(0.3, 1.0 - 0.05 * days_since(mem.created_at))  # 越久越淡
-        score *= 0.8 + 0.1 * mem.importance
-        scored.append((score, mem))
+    if not all_active:
+        return []
+
+    if len(all_active) <= 30:
+        # 小规模库：跳过关键词门槛，全量交给 LLM 语义重排（同义词也能召回）
+        scored = [(_base_weight(m), m) for m in all_active]
+    else:
+        # 大规模库：先用关键词粗筛压缩候选池
+        scored = []
+        for mem in all_active:
+            overlap = len(q_tokens & tokenize(mem.content))
+            if overlap == 0:
+                continue
+            scored.append((overlap * _base_weight(mem), mem))
+
+    if not scored:
+        return []
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [mem for _, mem in scored[:top_k]]
+    rough = [mem for _, mem in scored[:max(top_k * 3, 6)]]  # 粗筛候选池
+
+    # LLM 语义重排（优化#1）：失败则保持粗筛顺序，零风险降级
+    reranked = _rerank_sync(query, rough)
+    return reranked[:top_k]
 
 
-def save_extracted(db: Session, items: list[dict], source_msg: str) -> list[MemoryUnit]:
-    """候选入库：与已有记忆内容相同则跳过（简单去重；优化路线 #2 矛盾覆盖后续做）"""
-    saved = []
+def _base_weight(mem: MemoryUnit) -> float:
+    """与关键词无关的权重：置顶 × 时间衰减 × 重要性
+
+    时间衰减（优化#4 细化）：
+    - day 类（生日/纪念日）永不淡忘
+    - 置顶记忆衰减减半（用户在乎的事记得更牢）
+    - 下限 0.15，老朋友的事不会彻底消失
+    """
+    decay = max(0.0, 1.0 - 0.05 * days_since(mem.created_at))
+    if mem.category != "day":
+        if mem.pinned:
+            decay = max(decay, 0.5)
+        else:
+            decay = max(0.15, decay)
+    else:
+        decay = 1.0
+    return (2.0 if mem.pinned else 1.0) * decay * (0.8 + 0.1 * mem.importance)
+
+
+def _rerank_sync(query: str, candidates: list[MemoryUnit]) -> list[MemoryUnit]:
+    """同步封装的语义重排；Ollama 不可用时原样返回候选。"""
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # 在事件循环内被调用时退化为线程执行，避免嵌套 await
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _rerank(query, candidates)).result(timeout=40)
+    return asyncio.run(_rerank(query, candidates))
+
+
+async def _rerank(query: str, candidates: list[MemoryUnit]) -> list[MemoryUnit]:
+    """qwen 给每条候选打相关性分（0~10），按分排序。"""
+    lines = "\n".join(f"{i}. {m.content}" for i, m in enumerate(candidates))
+    raw = await _ollama_generate(
+        RERANK_PROMPT.format(query=query[:200], lines=lines),
+        timeout=OLLAMA_RERANK_TIMEOUT,
+    )
+    if not raw:
+        return candidates  # 降级：保持粗筛顺序
+
+    match = re.search(r"\[.*\]", raw, re.DOTALL)
+    if not match:
+        return candidates
+    try:
+        scores = json.loads(match.group())
+    except json.JSONDecodeError:
+        return candidates
+
+    score_map: dict[int, int] = {}
+    for item in scores:
+        if isinstance(item, dict) and "id" in item:
+            try:
+                idx = int(item["id"])
+                score_map[idx] = max(0, min(10, int(item.get("score", 0))))
+            except (TypeError, ValueError):
+                continue
+
+    ranked = sorted(
+        range(len(candidates)),
+        key=lambda i: score_map.get(i, 0),
+        reverse=True,
+    )
+    # 相关性阈值过滤（优化#1）：低分尾巴不召回，避免无关查询硬凑结果
+    return [candidates[i] for i in ranked if score_map.get(i, 0) >= RECALL_MIN_SCORE]
+
+
+async def save_extracted(db: Session, items: list[dict], source_msg: str):
+    """候选入库 + 矛盾覆盖。
+
+    流程：先对全量候选做矛盾判定（改口即使措辞相似也不是"重复"，必须参与比对），
+    再对未产生冲突覆盖的候选做精确去重入库。
+    返回 (保存的新记忆列表, 被覆盖的旧记忆id列表)。
+    """
+    conflicts = await detect_conflicts(items, db)  # {旧记忆id: 新记忆序号}
+    logger.warning("save_extracted: items=%r conflicts=%r", [i["content"] for i in items], conflicts)
+
     existing = {re.sub(r"\s+", "", m.content) for m in db.query(MemoryUnit).all()}
-    for item in items:
+    saved: list[tuple[int, MemoryUnit]] = []
+    superseded_ids: list[int] = []
+    covered_new_idx: set[int] = set(conflicts.values())
+
+    for idx, item in enumerate(items):
         key = re.sub(r"\s+", "", item["content"])
-        if key in existing:
+        # 精确重复跳过；但如果它是覆盖旧记忆的那条新认知，即使近似重复也要入库
+        if key in existing and idx not in covered_new_idx:
             continue
         mem = MemoryUnit(**item, source_msg=source_msg[:200])
         db.add(mem)
+        db.flush()  # 拿到自增 id，供 superseded_by 回填
         existing.add(key)
-        saved.append(mem)
-    if saved:
+        saved.append((idx, mem))
+
+    for old_id, new_idx in conflicts.items():
+        old = db.get(MemoryUnit, old_id)
+        new_mem = (
+            next((m for i, m in saved if i == new_idx), None)
+            if new_idx is not None else None
+        )
+        if old and not old.forgotten:
+            old.archived = True          # 不物理删除，可追溯
+            if new_mem:
+                old.superseded_by = new_mem.id
+            superseded_ids.append(old_id)
+
+    if saved or superseded_ids:
         db.commit()
-    return saved
+    return [m for _, m in saved], superseded_ids
+
+
+async def detect_conflicts(new_items: list[dict], db: Session) -> dict[int, int | None]:
+    """LLM 判断新旧记忆是否互相矛盾（优化#2，逐条询问式）。
+    返回 {被覆盖的旧记忆id: 覆盖它的新记忆序号或None}；Ollama 不可用返回空。"""
+    if not new_items:
+        return {}
+    actives = (
+        db.query(MemoryUnit)
+        .filter(MemoryUnit.forgotten.is_(False))
+        .order_by(MemoryUnit.created_at.desc())
+        .limit(30)  # 控制比对规模
+        .all()
+    )
+    if not actives:
+        return {}
+
+    old_lines = "\n".join(f"{m.id}. {m.content}" for m in actives)
+    result: dict[int, int | None] = {}
+    for idx, item in enumerate(new_items):
+        raw = await _ollama_generate(
+            CONFLICT_PROMPT.format(new_text=item["content"], old_lines=old_lines),
+            timeout=OLLAMA_RERANK_TIMEOUT,
+        )
+        if not raw:
+            continue
+        logger.warning("conflict-detect[%s] raw: %r", item["content"], raw[:120])
+        match = re.search(r"\[[^\]]*\]", raw, re.DOTALL)
+        if not match:
+            logger.warning("conflict-detect: no JSON array: %r", raw[:120])
+            continue
+        try:
+            ids = json.loads(match.group())
+        except json.JSONDecodeError:
+            logger.warning("conflict-detect: invalid JSON: %r", raw[:120])
+            continue
+        if not isinstance(ids, list):
+            continue
+        for old_id in ids:
+            try:
+                oid = int(old_id)
+            except (TypeError, ValueError):
+                continue
+            if oid in {m.id for m in actives} and oid not in result:
+                result[oid] = idx  # 新记忆序号由代码构造，无歧义
+    return result

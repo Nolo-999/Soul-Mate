@@ -95,8 +95,12 @@ def delete_memory(memory_id: int, db: Session = Depends(get_db)):
 async def extract(payload: ExtractRequest, db: Session = Depends(get_db)):
     """从对话文本提取记忆。Ollama 不可用时静默返回空，不影响聊天。"""
     candidates = await extract_memories(payload.dialogue)
-    saved = save_extracted(db, candidates, payload.source_msg)
-    return {"extracted": len(candidates), "saved": [_serialize(m) for m in saved]}
+    saved, superseded_ids = await save_extracted(db, candidates, payload.source_msg)
+    return {
+        "extracted": len(candidates),
+        "saved": [_serialize(m) for m in saved],
+        "superseded_ids": superseded_ids,  # 被新记忆覆盖的旧认知（前端可提示"TA更新了对你的认知"）
+    }
 
 
 @router.get("/recall")

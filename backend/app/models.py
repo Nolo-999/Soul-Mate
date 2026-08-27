@@ -17,5 +17,6 @@ class MemoryUnit(Base):
     archived = Column(Boolean, default=False)             # 归档：保留但不再召回
     forgotten = Column(Boolean, default=False)            # 遗忘开关：永不召回
     source_msg = Column(Text, default="")                 # 来源消息摘录
+    superseded_by = Column(Integer, nullable=True)         # 被哪条新记忆覆盖（矛盾更新时回填）
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
