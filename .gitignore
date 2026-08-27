@@ -47,3 +47,7 @@ htmlcov/
 
 # 构建
 *.spec
+
+# TTS 音频缓存（本地生成不进库）
+backend/static/tts/
+!backend/static/tts/.gitkeep
