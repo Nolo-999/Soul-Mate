@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { PersonaDraft, Sex } from '../types/persona';
 import { SEX_OPTIONS, NAME_MAX_LEN, EMPTY_PERSONA_DRAFT } from '../constants/persona';
+import { listVoices, synthesizeSpeech, type VoiceInfo } from '../api/voice';
 import './PersonaCreatePage.css';
 
 /** 人格引擎 - 创建页面（多窗口布局） */
@@ -13,6 +14,43 @@ export default function PersonaCreatePage() {
     ...location.state?.persona,
   }));
   const [toast, setToast] = useState<string | null>(null);
+  const [voices, setVoices] = useState<VoiceInfo[]>([]);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // 加载音色目录
+  useEffect(() => {
+    listVoices().then(setVoices).catch(() => setVoices([]));
+  }, []);
+
+  // 卸载时停止试听
+  useEffect(() => () => previewAudioRef.current?.pause(), []);
+
+  /** 试听音色 */
+  async function previewVoice(v: VoiceInfo) {
+    if (previewingId === v.id) { // 再点一次 = 停止
+      previewAudioRef.current?.pause();
+      setPreviewingId(null);
+      return;
+    }
+    previewAudioRef.current?.pause();
+    setPreviewingId(v.id);
+    try {
+      const sampleText =
+        v.gender === '男' ? '你好，我是你的专属恋人。往后余生，请多指教。'
+        : v.gender === '中性' ? '嗨，很高兴认识你。我的声音，你喜欢吗？'
+        : '嗨~我是你的专属恋人哦。今天也要开开心心的！';
+      const url = await synthesizeSpeech(sampleText, v.id, 'neutral');
+      const audio = new Audio(url);
+      previewAudioRef.current = audio;
+      audio.onended = () => setPreviewingId(null);
+      audio.onerror = () => { setPreviewingId(null); showToast('试听失败，请稍后再试'); };
+      await audio.play();
+    } catch {
+      setPreviewingId(null);
+      showToast('试听失败（后端未启动？）');
+    }
+  }
 
   // ---- 更新草稿 ----
   const set = <K extends keyof PersonaDraft>(key: K, value: PersonaDraft[K]) =>
@@ -118,14 +156,37 @@ export default function PersonaCreatePage() {
             <div className="pe-counter">{draft.bio.length} 字</div>
           </section>
 
-          {/* 窗口5：音色（预留） */}
+          {/* 窗口5：音色选择（语音模块已上线） */}
           <section className="pe-win pe-full">
             <h3>
               <span className="pe-no">5</span>音色
-              <span className="pe-badge">语音模块完成后开放</span>
+              {draft.voice && <span className="pe-badge on">已选定</span>}
             </h3>
-            <p className="pe-tip">选择 TA 的声音（温柔 / 元气 / 清冷 / 磁性……）</p>
-            <div className="pe-lock">🔒 音色选择将在语音模块上线后解锁，敬请期待</div>
+            <p className="pe-tip">点卡片试听 TA 的声音，再选一个最喜欢的（可不选）</p>
+            {voices.length === 0 ? (
+              <div className="pe-lock">音色目录加载失败，请确认后端服务已启动</div>
+            ) : (
+              <div className="pe-voice-grid">
+                {voices.map((v) => (
+                  <div
+                    key={v.id}
+                    className={`pe-voice-card${draft.voice === v.id ? ' selected' : ''}${previewingId === v.id ? ' playing' : ''}`}
+                    onClick={() => set('voice', draft.voice === v.id ? null : v.id)}
+                  >
+                    <button
+                      className="pe-voice-play"
+                      title={previewingId === v.id ? '停止试听' : '试听'}
+                      onClick={(e) => { e.stopPropagation(); void previewVoice(v); }}
+                    >
+                      {previewingId === v.id ? '⏹' : '▶'}
+                    </button>
+                    <div className="pe-voice-name">{v.name}</div>
+                    <div className="pe-voice-style">{v.style} · {v.gender}</div>
+                    <div className="pe-voice-desc">{v.desc}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
 

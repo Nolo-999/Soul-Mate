@@ -16,8 +16,8 @@ export interface PersonaDraft {
   setting: string;
   /** 对外简介 */
   bio: string;
-  /** 音色（语音模块完成后接入，暂为 null） */
-  voice: null;
+  /** 音色（Edge-TTS 音色 id；语音模块已上线，可为 null 表示不用语音） */
+  voice: string | null;
 }
 
 /** 保存后的完整人格结构（后端 persona_json 对应） */

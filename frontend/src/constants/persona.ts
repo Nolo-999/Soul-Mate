@@ -16,5 +16,5 @@ export const EMPTY_PERSONA_DRAFT = {
   sex: '' as Sex | '',
   setting: '',
   bio: '',
-  voice: null,
+  voice: null, // 音色：默认不用语音，用户在捏人页可选
 };

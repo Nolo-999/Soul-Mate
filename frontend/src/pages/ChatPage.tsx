@@ -9,6 +9,7 @@ import {
 } from '../constants/chat';
 import Live2DCharacter from '../components/live2d/Live2DCharacter';
 import { listMemories, recallMemories, extractMemories, type MemoryItem } from '../api/memory';
+import { speechQueue, type TtsEmotion } from '../api/voice';
 import './ChatPage.css';
 
 /** 好感度阶段名 */
@@ -46,6 +47,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [listening, setListening] = useState(false);
+  const [ttsOn, setTtsOn] = useState(false); // 语音朗读开关（默认关，用户点开）
   const [toast, setToast] = useState<string | null>(null);
   const [intimacy, setIntimacy] = useState(DEFAULT_PARTNER.intimacy);
   const [mood, setMood] = useState<ChatEmotion>('neutral'); // 驱动 Live2D 表情
@@ -59,6 +61,8 @@ export default function ChatPage() {
   const justDraggedRef = useRef(false); // 拖完后短暂屏蔽点击，防止误触发摸头动作
   // ---- 记忆模块 ----
   const [memories, setMemories] = useState<MemoryItem[]>([]);   // 侧栏「记得的事」
+  const roundsSinceMemo = useRef(0);          // 距上次记忆引用的对话轮数
+  const memoCiteTimes = useRef<number[]>([]); // 最近引用时间戳（每小时上限用）
   const idleTimer = useRef<number | null>(null);
   const reportTimer = useRef<number | null>(null);
   const replyTimer = useRef<number | null>(null);
@@ -109,6 +113,12 @@ export default function ChatPage() {
 
     // 情绪联动：AI 开口说话时，形象同步变表情
     reactToAiReply(list);
+
+    // 语音朗读：用人设音色 + 当前情绪语调（优化路线：情绪声线）
+    if (ttsOn && routePersona?.voice) {
+      speechQueue.setVoice(routePersona.voice);
+      for (const msg of list) speechQueue.enqueue(msg, mood as TtsEmotion);
+    }
 
     if (!shouldRetract) {
       let i = 0;
@@ -182,12 +192,23 @@ export default function ChatPage() {
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
 
     // 记忆召回：只引用**之前**存下的记忆（本轮内容还没入库，不会自我复读）
+    // 引用节奏控制（优化#3）：冷却≥3轮 + 每小时最多2次，低频引用才有"被记得"的惊喜感
     let memoRef: string | undefined;
-    try {
-      const hits = await recallMemories(context, 1);
-      if (hits[0]) memoRef = `还记得你说过「${hits[0].content}」`;
-    } catch {
-      // 后端没起就跳过，不影响聊天
+    const nowTs = Date.now();
+    memoCiteTimes.current = memoCiteTimes.current.filter((t) => nowTs - t < 3600_000);
+    const canCite = roundsSinceMemo.current >= 3 && memoCiteTimes.current.length < 2;
+    roundsSinceMemo.current += 1;
+    if (canCite) {
+      try {
+        const hits = await recallMemories(context, 1);
+        if (hits[0]) {
+          memoRef = `还记得你说过「${hits[0].content}」`;
+          roundsSinceMemo.current = 0;
+          memoCiteTimes.current.push(nowTs);
+        }
+      } catch {
+        // 后端没起就跳过，不影响聊天
+      }
     }
 
     // 异步提取入库（fire-and-forget，完成后刷新侧栏）
@@ -270,6 +291,18 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 语音朗读开关：开启时用已保存的音色朗读 */
+  function toggleTts() {
+    if (!routePersona?.voice) {
+      showToast('先去「改设定」给 TA 选一个音色吧~');
+      return;
+    }
+    const next = !ttsOn;
+    setTtsOn(next);
+    speechQueue.setEnabled(next);
+    showToast(next ? `🔊 已开启语音 · ${routePersona.name}会说话啦` : '🔇 语音已关闭');
+  }
+
   function toggleVoice() {
     if (!listening) { setListening(true); }
     else { setListening(false); setInput('我今天有点累'); }
@@ -344,6 +377,9 @@ export default function ChatPage() {
             <div className="partner-status">{stageName} · 认识 7 天 · {stageName === '亲密' ? '💗💗💗💗💗' : stageName === '暧昧' ? '💗💗💗' : '💗'}</div>
           </div>
         </div>
+        <button className={`edit-btn ${ttsOn ? 'tts-on' : ''}`} onClick={toggleTts} title="语音朗读开关">
+          {ttsOn ? '🔊 语音中' : '🔈 语音'}
+        </button>
         <button className="edit-btn" onClick={() => navigate('/', { state: { persona: routePersona } })}>✏️ 改设定</button>
       </header>
 

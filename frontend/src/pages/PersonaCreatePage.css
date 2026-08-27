@@ -73,6 +73,33 @@
   background: rgba(255,255,255,0.6); color: var(--sub); font-size: 13px;
 }
 
+/* ===== 音色选择卡片 ===== */
+.pe-badge.on { background: var(--pink); color: #fff; font-weight: 600; }
+.pe-voice-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px;
+}
+.pe-voice-card {
+  position: relative; padding: 14px; border: 2px solid var(--line);
+  border-radius: 14px; background: #fff; cursor: pointer; transition: all 0.2s;
+}
+.pe-voice-card:hover { border-color: var(--pink2); transform: translateY(-2px); }
+.pe-voice-card.selected {
+  border-color: var(--pink);
+  background: linear-gradient(135deg, rgba(255,126,179,0.1), rgba(200,162,240,0.1));
+  box-shadow: 0 4px 14px rgba(255,126,179,0.18);
+}
+.pe-voice-card.playing { border-color: var(--lav); }
+.pe-voice-play {
+  position: absolute; top: 10px; right: 10px;
+  width: 30px; height: 30px; border-radius: 50%; border: none;
+  background: linear-gradient(135deg, var(--pink), var(--lav));
+  color: #fff; font-size: 12px; cursor: pointer; transition: transform 0.15s;
+}
+.pe-voice-play:hover { transform: scale(1.12); }
+.pe-voice-name { font-size: 15px; font-weight: 700; color: var(--txt); }
+.pe-voice-style { font-size: 11px; color: var(--pink); margin-top: 3px; }
+.pe-voice-desc { font-size: 11px; color: var(--sub); margin-top: 5px; line-height: 1.5; }
+
 /* ===== 实时预览 ===== */
 .pe-preview {
   background: linear-gradient(135deg, rgba(255,126,179,0.1), rgba(200,162,240,0.12));
