@@ -2,8 +2,9 @@
  * 语音模块 API 客户端
  * 对应 backend /api/v1/voice
  */
+import { API_BASE, JSON_HEADERS, handle } from './client';
 
-const BASE = 'http://127.0.0.1:8000/api/v1/voice';
+const BASE = `${API_BASE}/voice`;
 
 export interface VoiceInfo {
   id: string;
@@ -17,9 +18,9 @@ export type TtsEmotion = 'happy' | 'shy' | 'sad' | 'angry' | 'flirty' | 'surpris
 
 /** 音色目录 */
 export async function listVoices(): Promise<VoiceInfo[]> {
-  const resp = await fetch(`${BASE}/voices`);
-  if (!resp.ok) throw new Error(`音色目录 ${resp.status}`);
-  const data = (await resp.json()) as { voices: VoiceInfo[] };
+  const data = await handle<{ voices: VoiceInfo[] }>(
+    await fetch(`${BASE}/voices`), '音色目录',
+  );
   return data.voices;
 }
 
@@ -27,7 +28,7 @@ export async function listVoices(): Promise<VoiceInfo[]> {
 export async function synthesizeSpeech(text: string, voice: string, emotion: TtsEmotion = 'neutral'): Promise<string> {
   const resp = await fetch(`${BASE}/tts`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ text, voice, emotion }),
   });
   if (!resp.ok) throw new Error(`语音合成失败 ${resp.status}`);

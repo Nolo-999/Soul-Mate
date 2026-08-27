@@ -108,16 +108,17 @@ export default function ChatPage() {
 
   /** 逐条蹦出 AI 回复（拟人化节奏，支持撤回；memoRef 为真实记忆引用，可选） */
   function streamReplies(list: string[], memoRef?: string) {
-    const box = boxRef.current;
     const shouldRetract = Math.random() < 0.1 && list.length >= 2;
 
     // 情绪联动：AI 开口说话时，形象同步变表情
-    reactToAiReply(list);
+    const emotion = inferEmotion(list.join(' '), intimacyRef.current);
+    setMoodWithDecay(emotion);
 
-    // 语音朗读：用人设音色 + 当前情绪语调（优化路线：情绪声线）
+    // 语音朗读：用人设音色 + 本轮情绪语调
+    // 注意：不读闭包里的 mood state（那是上一轮残留值），直接用刚推断出的 emotion，声画才同步
     if (ttsOn && routePersona?.voice) {
       speechQueue.setVoice(routePersona.voice);
-      for (const msg of list) speechQueue.enqueue(msg, mood as TtsEmotion);
+      for (const msg of list) speechQueue.enqueue(msg, emotion as TtsEmotion);
     }
 
     if (!shouldRetract) {
@@ -128,7 +129,6 @@ export default function ChatPage() {
         schedule(() => {
           // 记忆引用挂在第一条 AI 消息上
           appendMsg('ai', list[i], i === 0 && memoRef ? { memoRef: `💬 ${memoRef}` } : undefined);
-          if (box) box.scrollTop = box.scrollHeight;
           i++;
           next();
         }, delay);
@@ -136,16 +136,14 @@ export default function ChatPage() {
       next();
     } else {
       appendMsg('ai', list[0]);
-      if (box) box.scrollTop = box.scrollHeight;
-      schedule(() => { appendMsg('sys', '（撤回了一条消息）'); if (box) box.scrollTop = box.scrollHeight; }, 800);
-      schedule(() => { appendMsg('ai', RETRACT_POOL[Math.floor(Math.random() * RETRACT_POOL.length)]); if (box) box.scrollTop = box.scrollHeight; }, 1400);
+      schedule(() => appendMsg('sys', '（撤回了一条消息）'), 800);
+      schedule(() => appendMsg('ai', RETRACT_POOL[Math.floor(Math.random() * RETRACT_POOL.length)]), 1400);
       schedule(() => {
         appendMsg('ai', list[0]);
-        if (box) box.scrollTop = box.scrollHeight;
         let i = 1;
         function nextRest() {
           if (i >= list.length) return;
-          schedule(() => { appendMsg('ai', list[i]); if (box) box.scrollTop = box.scrollHeight; i++; nextRest(); }, 300 + Math.random() * 700);
+          schedule(() => { appendMsg('ai', list[i]); i++; nextRest(); }, 300 + Math.random() * 700);
         }
         nextRest();
       }, 2000);
@@ -157,7 +155,6 @@ export default function ChatPage() {
     const idx = Math.floor(Math.random() * TOOL_CALLS.length);
     const tool = TOOL_CALLS[idx];
     appendMsg('sys', `${tool.emoji} ${partner.name}${tool.name}了`);
-    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
     // 工具玩法也有专属表情
     setMoodWithDecay(TOOL_CALL_MOODS[tool.name] ?? 'happy');
     schedule(() => streamReplies(tool.messages), 800);
@@ -189,7 +186,7 @@ export default function ChatPage() {
     pendingMessages.current = [];
 
     setTyping(true);
-    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    scrollBottom();
 
     // 记忆召回：只引用**之前**存下的记忆（本轮内容还没入库，不会自我复读）
     // 引用节奏控制（优化#3）：冷却≥3轮 + 每小时最多2次，低频引用才有"被记得"的惊喜感
@@ -240,7 +237,7 @@ export default function ChatPage() {
     if (replyTimer.current) window.clearTimeout(replyTimer.current);
     replyTimer.current = window.setTimeout(processPendingReplies, REPLY_WAIT_MS);
 
-    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+    scrollBottom();
   }
 
   // ---- 防冷落 ----
@@ -303,6 +300,7 @@ export default function ChatPage() {
     showToast(next ? `🔊 已开启语音 · ${routePersona.name}会说话啦` : '🔇 语音已关闭');
   }
 
+  /** 语音输入（demo 占位：点停止时填入示例文案；接入真实 ASR 后替换） */
   function toggleVoice() {
     if (!listening) { setListening(true); }
     else { setListening(false); setInput('我今天有点累'); }
@@ -317,12 +315,6 @@ export default function ChatPage() {
     if (next !== 'neutral') {
       moodTimer.current = window.setTimeout(() => setMood('neutral'), MOOD_DECAY_MS + Math.random() * 4000);
     }
-  }
-
-  /** AI 回复 → 推断情绪并驱动形象 */
-  function reactToAiReply(list: string[]) {
-    const emotion = inferEmotion(list.join(' '), intimacyRef.current);
-    setMoodWithDecay(emotion);
   }
 
   // ---- 桌宠拖拽（pointer events，兼容鼠标/触屏） ----

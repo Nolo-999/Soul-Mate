@@ -5,6 +5,7 @@
 """
 import asyncio
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -23,7 +24,6 @@ async def synthesize(text: str, voice: str, rate: str = "+0%", pitch: str = "+0H
     if out_path is None:
         fd, out_path_str = tempfile.mkstemp(suffix=".mp3", dir=AUDIO_DIR)
         out_path = Path(out_path_str)
-        import os
         os.close(fd)  # 关闭句柄，Windows 下 edge-tts 打开文件需要
     communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
     try:

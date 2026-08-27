@@ -78,23 +78,13 @@ async def _ollama_generate(prompt: str, timeout: int = OLLAMA_TIMEOUT) -> str | 
             resp.raise_for_status()
             return resp.json().get("response", "")
     except Exception as exc:  # noqa: BLE001 —— 降级是设计行为
-        logger.warning("ollama call skipped: %s", exc)
+        logger.debug("ollama call skipped: %s", exc)
         return None
 
 
 def contains_sensitive(text: str) -> bool:
     """命中敏感信息（身份证/手机号/密码类词）→ 不落库"""
     return any(p.search(text) for p in SENSITIVE_PATTERNS)
-
-
-def _dedupe_texts(texts: list[str]) -> list[str]:
-    seen, out = set(), []
-    for t in texts:
-        key = re.sub(r"\s+", "", t)
-        if key and key not in seen:
-            seen.add(key)
-            out.append(t)
-    return out
 
 
 async def extract_memories(dialogue: str) -> list[dict]:
@@ -277,7 +267,7 @@ async def save_extracted(db: Session, items: list[dict], source_msg: str):
     返回 (保存的新记忆列表, 被覆盖的旧记忆id列表)。
     """
     conflicts = await detect_conflicts(items, db)  # {旧记忆id: 新记忆序号}
-    logger.warning("save_extracted: items=%r conflicts=%r", [i["content"] for i in items], conflicts)
+    logger.debug("save_extracted: items=%r conflicts=%r", [i["content"] for i in items], conflicts)
 
     existing = {re.sub(r"\s+", "", m.content) for m in db.query(MemoryUnit).all()}
     saved: list[tuple[int, MemoryUnit]] = []
@@ -336,15 +326,15 @@ async def detect_conflicts(new_items: list[dict], db: Session) -> dict[int, int 
         )
         if not raw:
             continue
-        logger.warning("conflict-detect[%s] raw: %r", item["content"], raw[:120])
+        logger.debug("conflict-detect[%s] raw: %r", item["content"], raw[:120])
         match = re.search(r"\[[^\]]*\]", raw, re.DOTALL)
         if not match:
-            logger.warning("conflict-detect: no JSON array: %r", raw[:120])
+            logger.debug("conflict-detect: no JSON array: %r", raw[:120])
             continue
         try:
             ids = json.loads(match.group())
         except json.JSONDecodeError:
-            logger.warning("conflict-detect: invalid JSON: %r", raw[:120])
+            logger.debug("conflict-detect: invalid JSON: %r", raw[:120])
             continue
         if not isinstance(ids, list):
             continue
