@@ -1,5 +1,6 @@
-/** 后端 API 基础地址（唯一出处，改端口只动这里） */
-export const API_BASE = 'http://127.0.0.1:8000/api/v1';
+/** 后端 API 基础地址（开发环境走 Vite 代理，部署环境默认同源） */
+const configuredApiBase = import.meta.env.VITE_API_BASE?.trim();
+export const API_BASE = (configuredApiBase || '/api/v1').replace(/\/$/, '');
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 

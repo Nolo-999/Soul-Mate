@@ -40,8 +40,8 @@ def ensure_collection():
     if conn is None:
         return False
     try:
-        from pymilvus import Collection, CollectionSchema, DataType, FieldSchema
-        if MILVUS_COLLECTION in [c.name for c in conn.list_collections()]:
+        from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, utility
+        if MILVUS_COLLECTION in utility.list_collections():
             return True
         fields = [
             FieldSchema("id", DataType.INT64, is_primary=True, auto_id=True),

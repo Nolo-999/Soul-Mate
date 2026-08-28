@@ -2,25 +2,22 @@
 import os
 
 
-# ─── OpenRouter (GLM-5.2 记忆抽取) ───
-OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-OPENROUTER_KEY = os.getenv(
-    "SOULMATE_OPENROUTER_KEY",
-    "sk-or-v1-placeholder",  # 主人填入真实 key
-)
-LLM_MODEL = "z-ai/glm-5.2"
-LLM_TIMEOUT = 60  # 秒
-LLM_MAX_TOKENS = 2048
-
-# ─── NVIDIA (Embedding 向量化) ───
+# ─── NVIDIA API（DeepSeek-V4-Pro 抽取 + Embedding 向量化）───
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
 NVIDIA_KEY = os.getenv(
     "SOULMATE_NVIDIA_KEY",
-    "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",
+    "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",
 )
+
+# Chat（记忆抽取）
+LLM_MODEL = "deepseek-ai/deepseek-v4-pro-0813"
+LLM_TIMEOUT = 60
+LLM_MAX_TOKENS = 4096
+
+# Embedding（向量化）
 EMBED_MODEL = "nvidia/llama-nemotron-embed-vl-1b-v2"
 EMBED_DIM = 2048
-EMBED_BATCH_SIZE = 32  # 单次最多编码条数
+EMBED_BATCH_SIZE = 32
 EMBED_TIMEOUT = 30
 
 # ─── Milvus 向量库 ───
@@ -32,6 +29,3 @@ MILVUS_COLLECTION = "soulemate_memories"
 NEO4J_URI = os.getenv("SOULMATE_NEO4J_URI", "bolt://127.0.0.1:7687")
 NEO4J_USER = os.getenv("SOULMATE_NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("SOULMATE_NEO4J_PASSWORD", "soulemate_neo4j")
-
-# ─── SQLite (元数据层，保持不变) ───
-# 由 database.py 管理，此处不重复定义

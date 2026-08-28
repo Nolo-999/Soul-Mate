@@ -85,16 +85,15 @@ def get_neighbors(user_id: str, *, max_hops: int = 2, limit: int = 20) -> list[d
     if driver is None:
         return []
     try:
-        query = f"""
-            MATCH path = (u:User {{id: $user_id}})-[*1..{max_hops}]-(e:Entity)
-            WITH path, relationships(path) AS rels, nodes(path) AS ns
+        query = """
+            MATCH path = (u:User {id: $user_id})-[*1..%d]-(e:Entity)
             RETURN
                 e.name AS entity,
-                [r IN rels | type(r)] AS rel_types,
-                [r IN rels | coalesce(r.evidence, '')] AS evidences,
+                [r IN relationships(path) | type(r)] AS rel_types,
+                [r IN relationships(path) | coalesce(r.evidence, '')] AS evidences,
                 length(path) AS depth
             LIMIT $limit
-        """
+        """ % max_hops
         with driver.session() as session:
             result = session.run(query, user_id=user_id, limit=limit)
             neighbors = []

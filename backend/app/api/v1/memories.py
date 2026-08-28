@@ -1,7 +1,7 @@
 """记忆模块 API（/api/v1/memories）"""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -45,7 +45,7 @@ def _serialize(mem: MemoryUnit) -> dict:
 
 
 @router.get("")
-def list_memories(status: str = "active", db: Session = Depends(get_db)):
+def list_memories(status: str = Query("active", pattern="^(active|archived|forgotten|all)$"), db: Session = Depends(get_db)):
     query = db.query(MemoryUnit)
     if status == "active":
         query = query.filter(MemoryUnit.forgotten.is_(False), MemoryUnit.archived.is_(False))
@@ -86,6 +86,12 @@ def delete_memory(memory_id: int, db: Session = Depends(get_db)):
     mem = db.get(MemoryUnit, memory_id)
     if not mem:
         raise HTTPException(404, "记忆不存在")
+    # SQLite 是元数据源，向量库删除失败时仍不阻塞用户操作。
+    try:
+        from app.milvus_client import delete_memory as delete_vector
+        delete_vector(memory_id)
+    except Exception:
+        pass
     db.delete(mem)
     db.commit()
     return {"ok": True}
@@ -105,7 +111,7 @@ async def extract(payload: ExtractRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/recall")
-def recall(q: str, top_k: int = 3, db: Session = Depends(get_db)):
+async def recall(q: str = Query(min_length=1, max_length=500), top_k: int = Query(3, ge=1, le=50), db: Session = Depends(get_db)):
     """按查询召回相关记忆（置顶优先 + 时间衰减）"""
-    items = recall_memories(db, q, top_k=top_k)
+    items = await recall_memories(db, q, top_k=top_k)
     return {"items": [_serialize(m) for m in items]}

@@ -155,6 +155,7 @@ export type ChatEmotion = 'happy' | 'shy' | 'sad' | 'angry' | 'flirty' | 'surpri
  * 用于驱动 Live2D 形象的表情/动作联动
  */
 export function inferEmotion(text: string, _intimacy?: number): ChatEmotion {
+  void _intimacy;
   const t = text.trim();
   if (!t) return 'neutral';
 

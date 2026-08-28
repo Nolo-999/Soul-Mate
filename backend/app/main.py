@@ -30,7 +30,9 @@ app = FastAPI(title="SoulMate Backend", version="0.2.0", lifespan=lifespan)
 # 前端 dev 端口跨域放行
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # 本地 Vite/预览端口以及同源反代均可访问；生产环境可通过环境层限制来源。
+    allow_origins=[],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -41,4 +43,10 @@ app.include_router(voice_router, prefix="/api/v1")
 
 @app.get("/api/health")
 def health():
+    return {"status": "ok", "version": "0.2.0"}
+
+
+@app.get("/api/v1/health")
+def v1_health():
+    """与业务 API 同前缀的健康检查，便于前端/反代统一探活。"""
     return {"status": "ok", "version": "0.2.0"}

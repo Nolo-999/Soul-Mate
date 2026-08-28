@@ -99,7 +99,8 @@ async def extract_memories(dialogue: str) -> tuple[list[dict], list[dict]]:
     """
     from app.llm_client import extract_json_object, llm_generate
 
-    prompt = EXTRACT_PROMPT.format(dialogue=dialogue[-2000:])  # GLM-5.2 上下文大，多给一些
+    # 用 replace 而非 format：prompt 里有字面 JSON 花括号，format 会误解析
+    prompt = EXTRACT_PROMPT.replace("{dialogue}", dialogue[-2000:])  # GLM-5.2 上下文大，多给一些
     raw = await llm_generate(prompt)
     if not raw:
         return [], []
@@ -121,7 +122,10 @@ def _clean_memories(items: list) -> list[dict]:
             continue
         content = str(item.get("content", "")).strip()
         category = str(item.get("category", "fact")).strip()
-        importance = int(item.get("importance", 3))
+        try:
+            importance = int(item.get("importance", 3))
+        except (TypeError, ValueError):
+            importance = 3
 
         if not content or len(content) > 80:
             continue
@@ -174,7 +178,7 @@ async def detect_conflicts(new_items: list[dict], db: Session) -> dict[int, int 
     result: dict[int, int | None] = {}
     for idx, item in enumerate(new_items):
         raw = await llm_generate(
-            CONFLICT_PROMPT.format(new_text=item["content"], old_lines=old_lines),
+            CONFLICT_PROMPT.replace("{new_text}", item["content"]).replace("{old_lines}", old_lines),
         )
         if not raw:
             continue
@@ -212,9 +216,10 @@ async def save_extracted(db: Session, items: list[dict], source_msg: str = "",
 
     existing = {re.sub(r"\s+", "", m.content) for m in db.query(MemoryUnit).all()}
     saved: list[MemoryUnit] = []
+    saved_by_index: dict[int, MemoryUnit] = {}
     superseded_ids: list[int] = []
 
-    for item in items:
+    for item_index, item in enumerate(items):
         key = re.sub(r"\s+", "", item["content"])
         if key in existing:
             continue
@@ -243,13 +248,15 @@ async def save_extracted(db: Session, items: list[dict], source_msg: str = "",
             logger.debug("milvus upsert skipped: %s", exc)
 
         saved.append(mem)
+        saved_by_index[item_index] = mem
         existing.add(key)
 
     # 处理矛盾覆盖
     for old_id, new_idx in conflicts.items():
         old_mem = db.get(MemoryUnit, old_id)
         if old_mem and old_mem not in saved:
-            old_mem.superseded_by = saved[new_idx].id if new_idx is not None and new_idx < len(saved) else None
+            replacement = saved_by_index.get(new_idx) if new_idx is not None else None
+            old_mem.superseded_by = replacement.id if replacement else None
             superseded_ids.append(old_id)
 
     # 写入 Neo4j 三元组
@@ -267,36 +274,44 @@ async def save_extracted(db: Session, items: list[dict], source_msg: str = "",
 
 
 # ═══════════════════════════════════════════════════════════════
-# 召回（Milvus 向量为主 + SQLite 时序兜底）
+# 召回（Milvus 向量为主 + SQLite 关键词兜底）
 # ═══════════════════════════════════════════════════════════════
 
 
-def recall_memories(db: Session, query: str, top_k: int = 3) -> list[MemoryUnit]:
-    """混合召回：Milvus 向量检索 → SQLite 时序兜底。
+async def recall_memories(db: Session, query: str, top_k: int = 3) -> list[MemoryUnit]:
+    """混合召回：Milvus 向量检索 → SQLite 关键词兜底。
 
     向量检索不可用时自动降级为纯 SQLite 召回（和原版一致）。
     """
     # 优先尝试 Milvus 向量检索
-    vector_ids = _recall_vector(query, top_k=top_k)
+    vector_ids = await _recall_vector(query, top_k=top_k)
     if vector_ids:
-        mems = db.query(MemoryUnit).filter(MemoryUnit.id.in_(vector_ids)).all()
+        mems = (
+            db.query(MemoryUnit)
+            .filter(
+                MemoryUnit.id.in_(vector_ids),
+                MemoryUnit.forgotten.is_(False),
+                MemoryUnit.archived.is_(False),
+            )
+            .all()
+        )
         if mems:
             # 保持向量检索的排序
             id_order = {mid: i for i, mid in enumerate(vector_ids)}
             mems.sort(key=lambda m: id_order.get(m.id, 999))
             return mems
 
-    # 降级：SQLite 时序召回（和原版逻辑一致）
-    return _recall_sqlite_fallback(db, top_k)
+    # 降级：SQLite 关键词召回
+    return _recall_sqlite_fallback(db, query, top_k)
 
 
-def _recall_vector(query: str, top_k: int = 10) -> list[int]:
+async def _recall_vector(query: str, top_k: int = 10) -> list[int]:
     """Milvus 向量检索，返回 memory_id 列表。"""
     try:
         from app.embedding import embed_one
         from app.milvus_client import search_similar
 
-        query_vec = embed_one(query, input_type="query")
+        query_vec = await embed_one(query, input_type="query")
         if not query_vec:
             return []
 
@@ -307,12 +322,31 @@ def _recall_vector(query: str, top_k: int = 10) -> list[int]:
         return []
 
 
-def _recall_sqlite_fallback(db: Session, top_k: int) -> list[MemoryUnit]:
-    """SQLite 时序召回兜底（置顶优先 + 时间衰减）。"""
-    return (
+def _recall_sqlite_fallback(db: Session, query: str, top_k: int) -> list[MemoryUnit]:
+    """SQLite 关键词召回兜底，避免把无关的最新记忆误当成命中。"""
+    terms = _recall_terms(query)
+    if not terms:
+        return []
+
+    candidates = (
         db.query(MemoryUnit)
         .filter(MemoryUnit.forgotten.is_(False), MemoryUnit.archived.is_(False))
-        .order_by(MemoryUnit.pinned.desc(), MemoryUnit.created_at.desc())
-        .limit(top_k)
         .all()
     )
+    scored: list[tuple[int, int, datetime, MemoryUnit]] = []
+    for mem in candidates:
+        content_terms = _recall_terms(mem.content)
+        overlap = len(terms & content_terms)
+        if overlap:
+            scored.append((overlap, int(bool(mem.pinned)), mem.created_at or datetime.min, mem))
+
+    scored.sort(key=lambda row: (row[0], row[1], row[2]), reverse=True)
+    return [row[3] for row in scored[:top_k]]
+
+
+def _recall_terms(text: str) -> set[str]:
+    """提取英文词、数字和中文双字词，作为无外部向量服务时的相关性近似。"""
+    terms = set(re.findall(r"[A-Za-z0-9_]+", text.lower()))
+    chinese = "".join(re.findall(r"[\u4e00-\u9fff]", text))
+    terms.update(chinese[i : i + 2] for i in range(len(chinese) - 1))
+    return terms
