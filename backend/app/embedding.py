@@ -36,6 +36,10 @@ async def embed_texts(texts: list[str], *, input_type: str = "passage") -> list[
     if not texts:
         return []
 
+    if not NVIDIA_KEY:
+        logger.debug("NVIDIA_KEY not configured, skipping embedding")
+        return []
+
     all_vectors: list[list[float]] = []
     try:
         client = _get_client()

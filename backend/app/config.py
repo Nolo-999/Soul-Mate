@@ -1,17 +1,25 @@
-"""统一配置：所有 API key、端口、模型名集中管理"""
-import os
+"""统一配置：所有 API key、端口、模型名集中管理
 
+优先从 .env 文件加载；未设置时使用默认值（降级模式，不报错）。
+"""
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 加载 backend/.env
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+if _env_path.exists():
+    load_dotenv(_env_path)
+else:
+    load_dotenv()  # 尝试从 cwd/.env 加载
 
 # ─── NVIDIA API（DeepSeek-V4-Pro 抽取 + Embedding 向量化）───
 NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
-NVIDIA_KEY = os.getenv(
-    "SOULMATE_NVIDIA_KEY",
-    "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",
-)
+NVIDIA_KEY = os.getenv("SOULMATE_NVIDIA_KEY", "")
 
 # Chat（记忆抽取）
 LLM_MODEL = "deepseek-ai/deepseek-v4-pro-0813"
-LLM_TIMEOUT = 60
 LLM_MAX_TOKENS = 4096
 
 # Embedding（向量化）

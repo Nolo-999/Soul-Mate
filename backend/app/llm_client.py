@@ -21,6 +21,9 @@ async def llm_generate(prompt: str, *, temperature: float = 0.1,
                        max_tokens: int = LLM_MAX_TOKENS,
                        timeout: int = LLM_TIMEOUT) -> str | None:
     """调 NVIDIA API DeepSeek-V4-Pro 生成文本；失败返回 None（零风险降级）。"""
+    if not NVIDIA_KEY:
+        logger.debug("NVIDIA_KEY not configured, skipping LLM call")
+        return None
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
