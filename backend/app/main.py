@@ -14,11 +14,18 @@ from app.database import ensure_schema
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    ensure_schema()  # 建表 + 轻量列迁移；正式迁移用 alembic（后续）
+    # 建表 + 轻量列迁移
+    ensure_schema()
+    # 初始化 Milvus collection（Milvus 不可用时静默跳过）
+    try:
+        from app.milvus_client import ensure_collection
+        ensure_collection()
+    except Exception:
+        pass
     yield
 
 
-app = FastAPI(title="SoulMate Backend", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="SoulMate Backend", version="0.2.0", lifespan=lifespan)
 
 # 前端 dev 端口跨域放行
 app.add_middleware(
@@ -34,4 +41,4 @@ app.include_router(voice_router, prefix="/api/v1")
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "0.2.0"}

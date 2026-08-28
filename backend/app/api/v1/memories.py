@@ -93,13 +93,14 @@ def delete_memory(memory_id: int, db: Session = Depends(get_db)):
 
 @router.post("/extract")
 async def extract(payload: ExtractRequest, db: Session = Depends(get_db)):
-    """从对话文本提取记忆。Ollama 不可用时静默返回空，不影响聊天。"""
-    candidates = await extract_memories(payload.dialogue)
-    saved, superseded_ids = await save_extracted(db, candidates, payload.source_msg)
+    """从对话文本提取记忆+三元组。Ollama/GLM 不可用时静默返回空，不影响聊天。"""
+    memories, triples = await extract_memories(payload.dialogue)
+    saved, superseded_ids = await save_extracted(db, memories, payload.source_msg, triples=triples)
     return {
-        "extracted": len(candidates),
+        "extracted": len(memories),
         "saved": [_serialize(m) for m in saved],
-        "superseded_ids": superseded_ids,  # 被新记忆覆盖的旧认知（前端可提示"TA更新了对你的认知"）
+        "superseded_ids": superseded_ids,
+        "triples": len(triples),
     }
 
 
