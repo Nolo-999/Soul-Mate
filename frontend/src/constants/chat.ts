@@ -16,12 +16,14 @@ export const CHATTERBOX_REPLIES: string[][] = [
 /** 撤回替换池 */
 export const RETRACT_POOL = ['……我重新说。', '打错了，你当我没说。', '（清了清嗓子）重来。', '……算了，你当我没说。'];
 
+export type ReplyStyle = 'cute' | 'cool' | 'tease' | 'warm';
+
 /** 关键词 → 多条短句回复（按好感度分档） */
-export function pickReplies(input: string, intimacy: number): string[] {
+export function pickReplies(input: string, intimacy: number, replyStyle: ReplyStyle = 'cute'): string[] {
   const t = input.trim();
 
   // 话痨模式：15%概率触发（亲密档25%）
-  const chance = intimacy > 80 ? 0.25 : 0.15;
+  const chance = intimacy > 80 ? 0.25 : intimacy > 60 ? 0.15 : 0;
   if (Math.random() < chance) {
     return CHATTERBOX_REPLIES[Math.floor(Math.random() * CHATTERBOX_REPLIES.length)];
   }
@@ -79,7 +81,17 @@ export function pickReplies(input: string, intimacy: number): string[] {
     replies[0] = FILLERS[Math.floor(Math.random() * FILLERS.length)] + replies[0];
   }
 
-  return replies;
+  return applyReplyStyle(replies, replyStyle);
+}
+
+/** 本地回复池阶段的轻量语气变化；接入 LLM 后可替换为系统提示词。 */
+function applyReplyStyle(replies: string[], style: ReplyStyle): string[] {
+  if (!replies.length) return replies;
+  const styled = [...replies];
+  if (style === 'cute' && !/[。！？～]$/.test(styled[0])) styled[0] += '～';
+  if (style === 'tease') styled[0] = `哼，${styled[0]}`;
+  if (style === 'warm' && styled.length === 1) styled.push('慢慢说，我在听。');
+  return styled;
 }
 
 /** 防冷落：一段时间没互动，TA 主动发来的消息（设置中可开关） */

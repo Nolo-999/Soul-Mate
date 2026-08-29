@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>江南水墨 · 配色预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "STKaiti", "KaiTi", "Noto Serif SC", "Songti SC", serif;
+    background: #e8e2d8;
+    padding: 40px 24px;
+    color: #3a3a3a;
+  }
+  h1 { text-align: center; font-weight: normal; letter-spacing: 4px; font-size: 26px; margin-bottom: 6px; }
+  .sub { text-align: center; color: #8a8378; font-size: 13px; letter-spacing: 2px; margin-bottom: 36px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 920px; margin: 0 auto; }
+
+  .theme {
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    position: relative;
+  }
+  .theme-preview { height: 220px; padding: 22px; position: relative; overflow: hidden; }
+  .theme-label {
+    padding: 12px 18px; background: #fff;
+    font-size: 14px; letter-spacing: 2px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .theme-label .colors { display: flex; gap: 6px; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); }
+
+  /* 模拟卡片 */
+  .mock-card {
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+    font-size: 13px; backdrop-filter: blur(2px);
+  }
+  .mock-title { font-size: 15px; letter-spacing: 2px; margin-bottom: 8px; }
+  .mock-btn {
+    display: inline-block; padding: 6px 16px; border-radius: 20px;
+    font-size: 12px; letter-spacing: 2px; margin-top: 6px;
+  }
+  .poem { position: absolute; right: 18px; bottom: 14px; font-size: 20px; opacity: 0.5; letter-spacing: 3px; writing-mode: vertical-rl; }
+
+  /* 主题1：暖灰底+墨青点缀 */
+  .t1 .theme-preview { background: linear-gradient(160deg, #f0ece4, #e3ddd2); color: #4a4a45; }
+  .t1 .mock-card { background: rgba(255,255,255,0.5); border: 1px solid rgba(90,100,90,0.15); }
+  .t1 .mock-btn { background: #5a6b5a; color: #fff; }
+  .t1 .accent { color: #5a6b5a; }
+
+  /* 主题2：素白底+水墨灰阶 */
+  .t2 .theme-preview { background: #fafaf8; color: #333; }
+  .t2 .mock-card { background: #fff; border: 1px solid #e5e5e0; }
+  .t2 .mock-btn { background: #4a4a4a; color: #fff; }
+  .t2 .accent { color: #6b6b6b; }
+
+  /* 主题3：浅黛青底+灰白 */
+  .t3 .theme-preview { background: linear-gradient(160deg, #dfe6e6, #c8d4d2); color: #35403f; }
+  .t3 .mock-card { background: rgba(255,255,255,0.55); border: 1px solid rgba(60,90,90,0.2); }
+  .t3 .mock-btn { background: #5a7a76; color: #fff; }
+  .t3 .accent { color: #5a7a76; }
+
+  /* 主题4：米白+淡青+朱砂红 */
+  .t4 .theme-preview { background: linear-gradient(160deg, #f4efe4, #e8e2d2); color: #4a4438; }
+  .t4 .mock-card { background: rgba(255,255,255,0.6); border: 1px solid rgba(160,130,90,0.2); }
+  .t4 .mock-btn { background: #9e3b2f; color: #fff; }
+  .t4 .accent { color: #9e3b2f; }
+</style>
+</head>
+<body>
+  <h1>江南烟雨</h1>
+  <div class="sub">水墨风格 · 四套配色预览</div>
+
+  <div class="grid">
+    <div class="theme t1">
+      <div class="theme-preview">
+        <div class="mock-title accent">暖灰宣纸</div>
+        <div class="mock-card">暮色染江南，青瓷一盏，<span class="accent">墨香氤氲</span>。烟雨入盏，岁月静好。</div>
+        <div class="mock-btn">进入</div>
+        <div class="poem">小桥流水人家</div>
+      </div>
+      <div class="theme-label">
+        <span>壹 · 暖灰宣纸</span>
+        <div class="colors"><span class="dot" style="background:#f0ece4"></span><span class="dot" style="background:#5a6b5a"></span><span class="dot" style="background:#4a4a45"></span></div>
+      </div>
+    </div>
+
+    <div class="theme t2">
+      <div class="theme-preview">
+        <div class="mock-title accent">素白留白</div>
+        <div class="mock-card">留白处，<span class="accent">墨迹</span>未干。一方素纸，半卷心事，最是含蓄。</div>
+        <div class="mock-btn">进入</div>
+        <div class="poem">白描无声胜有声</div>
+      </div>
+      <div class="theme-label">
+        <span>贰 · 素白留白</span>
+        <div class="colors"><span class="dot" style="background:#fafaf8"></span><span class="dot" style="background:#4a4a4a"></span><span class="dot" style="background:#e5e5e0"></span></div>
+      </div>
+    </div>
+
+    <div class="theme t3">
+      <div class="theme-preview">
+        <div class="mock-title accent">黛青烟雨</div>
+        <div class="mock-card">雨打青石，<span class="accent">黛色入梦</span>。远山含烟，一蓑烟雨任平生。</div>
+        <div class="mock-btn">进入</div>
+        <div class="poem">天青色等烟雨</div>
+      </div>
+      <div class="theme-label">
+        <span>叁 · 黛青烟雨</span>
+        <div class="colors"><span class="dot" style="background:#dfe6e6"></span><span class="dot" style="background:#5a7a76"></span><span class="dot" style="background:#35403f"></span></div>
+      </div>
+    </div>
+
+    <div class="theme t4">
+      <div class="theme-preview">
+        <div class="mock-title accent">朱砂点睛</div>
+        <div class="mock-card">米白如绢，<span class="accent">朱砂一点红</span>。青峰隐隐，印章落款，画卷天成。</div>
+        <div class="mock-btn">进入</div>
+        <div class="poem">一点朱砂印江南</div>
+      </div>
+      <div class="theme-label">
+        <span>肆 · 朱砂点睛</span>
+        <div class="colors"><span class="dot" style="background:#f4efe4"></span><span class="dot" style="background:#9e3b2f"></span><span class="dot" style="background:#5a7a76"></span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -4,22 +4,15 @@ import type { ChatMessage } from '../types/chat';
 import type { PersonaDraft } from '../types/persona';
 import {
   pickReplies, PROACTIVE_MESSAGES, DEFAULT_PARTNER, RETRACT_POOL,
-  REPORT_INTERVAL, REPORT_MESSAGES, TOOL_CALLS,
-  inferEmotion, TOOL_CALL_MOODS, type ChatEmotion,
+  inferEmotion, type ChatEmotion,
 } from '../constants/chat';
 import Live2DCharacter from '../components/live2d/Live2DCharacter';
-import { listMemories, recallMemories, extractMemories, type MemoryItem } from '../api/memory';
+import { recallMemories, extractMemories } from '../api/memory';
 import { speechQueue, type TtsEmotion } from '../api/voice';
+import { decideProactiveMessage, type ProactiveDecision } from '../api/relationship';
+import { requestAgentReply } from '../api/chat';
+import { useSettingsStore } from '../stores/settings';
 import './ChatPage.css';
-
-/** 好感度阶段名 */
-function getStageName(val: number): string {
-  if (val <= 20) return '陌生';
-  if (val <= 40) return '认识';
-  if (val <= 60) return '熟悉';
-  if (val <= 80) return '暧昧';
-  return '亲密';
-}
 
 /** 等待用户停止输入的时间（ms） */
 const REPLY_WAIT_MS = 4000;
@@ -33,11 +26,21 @@ const MOOD_LABELS: Record<ChatEmotion, string> = {
   angry: '😠 生气', flirty: '😏 撩人', surprise: '😮 惊讶', neutral: '😌 平静',
 };
 
+function proactiveReply(tone: ProactiveDecision['tone'], intimacy: number): string[] {
+  if (intimacy <= 60) {
+    return tone === 'gentle'
+      ? ['路过想起你。要是在忙，不用急着回。']
+      : ['有空再回我就好。'];
+  }
+  return PROACTIVE_MESSAGES[Math.floor(Math.random() * PROACTIVE_MESSAGES.length)];
+}
+
 /** 对话系统页面 */
 export default function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const routePersona = location.state?.persona as PersonaDraft | undefined;
+  const settings = useSettingsStore();
   const partner = {
     ...DEFAULT_PARTNER,
     name: routePersona?.name.trim() || DEFAULT_PARTNER.name,
@@ -49,7 +52,7 @@ export default function ChatPage() {
   const [listening, setListening] = useState(false);
   const [ttsOn, setTtsOn] = useState(false); // 语音朗读开关（默认关，用户点开）
   const [toast, setToast] = useState<string | null>(null);
-  const [intimacy, setIntimacy] = useState(DEFAULT_PARTNER.intimacy);
+  const [intimacy, setIntimacy] = useState(settings.intimacy);
   const [mood, setMood] = useState<ChatEmotion>('neutral'); // 驱动 Live2D 表情
   const [live2dError, setLive2dError] = useState<string | null>(null);
   const moodTimer = useRef<number | null>(null);
@@ -60,11 +63,9 @@ export default function ChatPage() {
   const dragState = useRef({ dragging: false, moved: false, startX: 0, startY: 0, originX: 0, originY: 0 });
   const justDraggedRef = useRef(false); // 拖完后短暂屏蔽点击，防止误触发摸头动作
   // ---- 记忆模块 ----
-  const [memories, setMemories] = useState<MemoryItem[]>([]);   // 侧栏「记得的事」
   const roundsSinceMemo = useRef(0);          // 距上次记忆引用的对话轮数
   const memoCiteTimes = useRef<number[]>([]); // 最近引用时间戳（每小时上限用）
   const idleTimer = useRef<number | null>(null);
-  const reportTimer = useRef<number | null>(null);
   const replyTimer = useRef<number | null>(null);
   const delayedTimers = useRef(new Set<number>());
   const pendingMessages = useRef<string[]>([]); // 待回复的用户消息队列
@@ -72,6 +73,8 @@ export default function ChatPage() {
   const boxRef = useRef<HTMLDivElement>(null);
   const idRef = useRef(0);
   const intimacyRef = useRef(intimacy);
+  const proactiveChecking = useRef(false);
+  const proactiveDelay = settings.companionship === 'gentle' ? 600_000 : 180_000;
 
   const nextId = () => `m${++idRef.current}`;
   const now = () => new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -94,24 +97,19 @@ export default function ChatPage() {
   /** 追加一条消息（memoRef：记忆引用文案，可选） */
   function appendMsg(role: ChatMessage['role'], content: string, extra?: Partial<ChatMessage>) {
     setMessages((prev) => [...prev, { id: nextId(), role, content, time: now(), ...extra }]);
+    if (role === 'ai' && settings.notificationsEnabled && document.visibilityState === 'hidden'
+      && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(partner.name, { body: content.slice(0, 80) });
+    }
     scrollBottom();
   }
 
-  /** 刷新侧栏「记得的事」（取最近5条活跃记忆） */
-  async function refreshMemories() {
-    try {
-      setMemories(await listMemories('active'));
-    } catch {
-      // 后端没起就保持现状，不影响聊天
-    }
-  }
-
   /** 逐条蹦出 AI 回复（拟人化节奏，支持撤回；memoRef 为真实记忆引用，可选） */
-  function streamReplies(list: string[], memoRef?: string) {
+  function streamReplies(list: string[], memoRef?: string, emotionOverride?: ChatEmotion) {
     const shouldRetract = Math.random() < 0.1 && list.length >= 2;
 
     // 情绪联动：AI 开口说话时，形象同步变表情
-    const emotion = inferEmotion(list.join(' '), intimacyRef.current);
+    const emotion = emotionOverride ?? inferEmotion(list.join(' '), intimacyRef.current);
     setMoodWithDecay(emotion);
 
     // 语音朗读：用人设音色 + 本轮情绪语调
@@ -150,34 +148,6 @@ export default function ChatPage() {
     }
   }
 
-  /** 触发工具调用 */
-  function triggerToolCall() {
-    const idx = Math.floor(Math.random() * TOOL_CALLS.length);
-    const tool = TOOL_CALLS[idx];
-    appendMsg('sys', `${tool.emoji} ${partner.name}${tool.name}了`);
-    // 工具玩法也有专属表情
-    setMoodWithDecay(TOOL_CALL_MOODS[tool.name] ?? 'happy');
-    schedule(() => streamReplies(tool.messages), 800);
-  }
-
-  /** 动态增减好感度 */
-  function adjustIntimacyForMessage(txt: string) {
-    let delta = 0;
-    if (/累|压力|加班|烦|崩溃/.test(txt)) delta = 2;
-    else if (/想|爱|喜欢/.test(txt)) delta = 3;
-    if (/滚|傻|蠢|白痴/.test(txt)) delta = -5;
-    if (delta !== 0) setIntimacy((prev) => Math.max(0, Math.min(100, prev + delta)));
-  }
-
-  /** 手动调整好感度 */
-  function adjustIntimacy(delta: number) {
-    setIntimacy((prev) => {
-      const next = Math.max(0, Math.min(100, prev + delta));
-      showToast(delta > 0 ? `好感度 +${delta}` : `好感度 ${delta}`);
-      return next;
-    });
-  }
-
   /** 处理待回复消息（等待用户停了再统一回复） */
   async function processPendingReplies() {
     if (pendingMessages.current.length === 0) return;
@@ -209,16 +179,42 @@ export default function ChatPage() {
     }
 
     // 异步提取入库（fire-and-forget，完成后刷新侧栏）
-    void extractMemories(context, context).then(() => refreshMemories());
+    if (settings.autoMemory) {
+      void extractMemories(context, context);
+    }
 
-    schedule(() => {
-      setTyping(false);
-      if (Math.random() < (intimacyRef.current > 80 ? 0.3 : 0.2)) {
-        triggerToolCall();
-      } else {
-        streamReplies(pickReplies(context, intimacyRef.current), memoRef);
-      }
-    }, 900);
+    try {
+      const agentReply = await requestAgentReply({
+        message: context,
+        intimacy: intimacyRef.current,
+        personaName: partner.name,
+        personaSetting: routePersona?.setting ?? '',
+        replyStyle: settings.replyStyle,
+        history: messages.slice(-10).reduce<{ role: 'user' | 'ai'; content: string }[]>((history, message) => {
+          if (message.role === 'user' || message.role === 'ai') {
+            history.push({ role: message.role, content: message.content });
+          }
+          return history;
+        }, []),
+      });
+      schedule(() => {
+        setTyping(false);
+        if (agentReply.intimacyDelta !== 0) {
+          setIntimacy((previous) => {
+            const next = Math.max(0, Math.min(100, previous + agentReply.intimacyDelta));
+            settings.updateSettings({ intimacy: next });
+            return next;
+          });
+        }
+        streamReplies([agentReply.reply], memoRef, agentReply.emotion);
+      }, 350);
+    } catch {
+      // 后端不可用时保持关系不变，并采用当前阶段的保守本地回复。
+      schedule(() => {
+        setTyping(false);
+        streamReplies(pickReplies(context, intimacyRef.current, settings.replyStyle), memoRef);
+      }, 350);
+    }
   }
 
   /** 发送消息：聚合成批，等用户停了再回 */
@@ -228,7 +224,6 @@ export default function ChatPage() {
     appendMsg('user', txt);
     setInput('');
     resetIdleTimer();
-    adjustIntimacyForMessage(txt);
 
     // 加入待处理队列
     pendingMessages.current.push(txt);
@@ -241,31 +236,51 @@ export default function ChatPage() {
   }
 
   // ---- 防冷落 ----
-  const IDLE_MS = 25000;
-  function resetIdleTimer() { if (idleTimer.current) window.clearTimeout(idleTimer.current); }
+  function resetIdleTimer(delay = proactiveDelay) {
+    if (idleTimer.current) window.clearTimeout(idleTimer.current);
+    if (settings.companionship !== 'off') {
+      idleTimer.current = window.setTimeout(proactiveMessage, delay);
+    }
+  }
 
-  function proactiveMessage() {
+  async function proactiveMessage() {
+    if (settings.companionship === 'off') return;
     if (idleCount.current >= 2) return;
+    if (intimacyRef.current <= 40 || proactiveChecking.current) return;
+
+    proactiveChecking.current = true;
+    let decision: ProactiveDecision;
+    try {
+      decision = await decideProactiveMessage({
+        intimacy: intimacyRef.current,
+        personaSetting: routePersona?.setting ?? '',
+        recentMessages: messages.slice(-8).reduce<{ role: 'user' | 'ai'; content: string }[]>((history, message) => {
+          if (message.role === 'user' || message.role === 'ai') {
+            history.push({ role: message.role, content: message.content });
+          }
+          return history;
+        }, []),
+        idleSeconds: Math.floor(proactiveDelay / 1000),
+      });
+    } catch {
+      resetIdleTimer(proactiveDelay * 2);
+      proactiveChecking.current = false;
+      return;
+    }
+    proactiveChecking.current = false;
+
+    if (!decision.shouldInitiate) {
+      resetIdleTimer(proactiveDelay * 2);
+      return;
+    }
+
     idleCount.current += 1;
     setTyping(true);
     schedule(() => {
       setTyping(false);
-      streamReplies(PROACTIVE_MESSAGES[idleCount.current - 1]);
+      streamReplies(proactiveReply(decision.tone, intimacyRef.current));
     }, 1200);
-    setIntimacy((prev) => Math.min(100, prev + 1));
-    resetIdleTimer();
-    idleTimer.current = window.setTimeout(proactiveMessage, IDLE_MS * 2);
-  }
-
-  // ---- 报备系统 ----
-  function startReportTimer() {
-    reportTimer.current = window.setTimeout(() => {
-      if (Math.random() < 0.4) {
-        const msg = REPORT_MESSAGES[Math.floor(Math.random() * REPORT_MESSAGES.length)];
-        streamReplies(msg);
-      }
-      startReportTimer();
-    }, REPORT_INTERVAL);
+    resetIdleTimer(proactiveDelay * 2);
   }
 
   useEffect(() => {
@@ -273,20 +288,26 @@ export default function ChatPage() {
   }, [intimacy]);
 
   useEffect(() => {
+    setIntimacy(settings.intimacy);
+  }, [settings.intimacy]);
+
+  useEffect(() => {
+    speechQueue.setPlaybackRate(settings.ttsSpeed);
+  }, [settings.ttsSpeed]);
+
+  useEffect(() => {
     const timers = delayedTimers.current;
-    idleTimer.current = window.setTimeout(proactiveMessage, IDLE_MS);
-    startReportTimer();
-    void refreshMemories(); // 进页面加载「记得的事」
+    resetIdleTimer();
     return () => {
       if (idleTimer.current) window.clearTimeout(idleTimer.current);
-      if (reportTimer.current) window.clearTimeout(reportTimer.current);
       if (replyTimer.current) window.clearTimeout(replyTimer.current);
       if (moodTimer.current) window.clearTimeout(moodTimer.current);
       timers.forEach((timer) => window.clearTimeout(timer));
       timers.clear();
     };
+    // Timers are recreated when the companionship mode changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [settings.companionship]);
 
   /** 语音朗读开关：开启时用已保存的音色朗读 */
   function toggleTts() {
@@ -356,22 +377,26 @@ export default function ChatPage() {
       window.setTimeout(() => { justDraggedRef.current = false; }, 250);
     }
   }
-  const stageName = getStageName(intimacy);
-
   return (
-    <div className="chat-page">
+    <div
+      className={`chat-page${settings.backgroundImage ? ' has-custom-background' : ''}`}
+      style={{
+        '--chat-font-size': settings.fontSize === 'small' ? '13px' : settings.fontSize === 'large' ? '16px' : '14px',
+        ...(settings.backgroundImage ? {
+          backgroundImage: `linear-gradient(var(--bg-glass-wash, rgba(250,250,248,0.8)), var(--bg-glass-wash, rgba(250,250,248,0.8))), url(${settings.backgroundImage})`,
+        } : {}),
+      } as React.CSSProperties}
+    >
       <header className="chat-topbar">
         <button className="back" onClick={() => navigate(-1)} aria-label="返回">←</button>
         <div className="partner">
           <div className="partner-avatar">{partner.avatar}</div>
-          <div>
-            <div className="partner-name">{partner.name}</div>
-            <div className="partner-status">{stageName} · 认识 7 天 · {stageName === '亲密' ? '💗💗💗💗💗' : stageName === '暧昧' ? '💗💗💗' : '💗'}</div>
-          </div>
+          <div className="partner-name">{partner.name}</div>
         </div>
         <button className={`edit-btn ${ttsOn ? 'tts-on' : ''}`} onClick={toggleTts} title="语音朗读开关">
           {ttsOn ? '🔊 语音中' : '🔈 语音'}
         </button>
+        <button className="edit-btn" onClick={() => navigate('/settings', { state: { persona: routePersona } })}>⚙️ 设置</button>
         <button className="edit-btn" onClick={() => navigate('/', { state: { persona: routePersona } })}>✏️ 改设定</button>
       </header>
 
@@ -403,36 +428,6 @@ export default function ChatPage() {
       </div>
 
       <div className="chat-body">
-        <aside className="side-panel">
-          <div className="side-card">
-            <h4>💗 关系进度</h4>
-            <div className="intimacy-bar"><div className="intimacy-fill" style={{ width: `${intimacy}%` }} /></div>
-            <div className="intimacy-txt">{stageName} · {intimacy} / 100</div>
-            <div className="intimacy-controls">
-              <button className="intimacy-btn minus" onClick={() => adjustIntimacy(-5)}>−5</button>
-              <span className="intimacy-val-badge">{intimacy}</span>
-              <button className="intimacy-btn plus" onClick={() => adjustIntimacy(5)}>+5</button>
-            </div>
-          </div>
-          <div className="side-card">
-            <h4>🧩 性格标签</h4>
-            <div className="tags">{DEFAULT_PARTNER.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
-          </div>
-          <div className="side-card">
-            <h4>🧠 记得的事</h4>
-            {memories.length > 0 ? (
-              <ul className="memo-list">
-                {memories.slice(0, 5).map((m) => (
-                  <li key={m.id}>{m.pinned ? '⭐ ' : ''}{m.content}</li>
-                ))}
-              </ul>
-            ) : (
-              <p className="memo-empty">还没有记忆，多和 TA 聊聊吧～</p>
-            )}
-            <div className="memo-more" onClick={() => navigate('/memories')}>查看全部 →</div>
-          </div>
-        </aside>
-
         <main className="chat-main">
           <div className="chat-box" ref={boxRef}>
             <div className="time-divider">今天 21:04</div>

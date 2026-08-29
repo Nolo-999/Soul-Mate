@@ -46,6 +46,7 @@ class SpeechQueue {
   private audio: HTMLAudioElement | null = null;
   private _enabled = false;
   private _voice = 'zh-CN-XiaoxiaoNeural';
+  private _playbackRate = 1;
   private listeners = new Set<() => void>();
 
   get enabled() { return this._enabled; }
@@ -61,6 +62,11 @@ class SpeechQueue {
 
   setVoice(voiceId: string) {
     this._voice = voiceId;
+  }
+
+  setPlaybackRate(rate: number) {
+    this._playbackRate = Math.max(0.5, Math.min(2, rate));
+    if (this.audio) this.audio.playbackRate = this._playbackRate;
   }
 
   /** 入队一条朗读（未启用时忽略） */
@@ -97,6 +103,7 @@ class SpeechQueue {
         const url = await synthesizeSpeech(item.text, this._voice, item.emotion);
         await new Promise<void>((resolve) => {
           const audio = new Audio(url);
+          audio.playbackRate = this._playbackRate;
           this.audio = audio;
           audio.onended = () => resolve();
           audio.onerror = () => resolve(); // 播放失败跳过，不阻塞队列
